@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_driver/driver_extension.dart';
 
 void main() {
-  // Enable Flutter Driver extension for automation
-  enableFlutterDriverExtension();
+  // Automatically enable Flutter Driver in debug builds only.
+  // This allows automation testing while having zero overhead in release builds.
+  // The assert block is tree-shaken out in release mode.
+  assert(() {
+    enableFlutterDriverExtension();
+    return true;
+  }());
+
   runApp(const FlutterControlTestApp());
 }
 

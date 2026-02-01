@@ -1,7 +1,7 @@
 # Flutter Control - Project Status
 
 **Last Updated:** 2026-01-31
-**Current Phase:** Phase 5 Complete ✅
+**Current Phase:** Phase 6 Complete ✅
 
 ## Project Overview
 
@@ -105,7 +105,7 @@ Android: VM:9223 (relay) → Host:9233 (bridge) → Host:9223 (ADB fwd) → Emul
 iOS:     VM:9223 (direct) → iOS Simulator (on VM)
 ```
 
-### Phase 6: Polish & Cleanup - IN PROGRESS
+### Phase 6: Polish & Cleanup - COMPLETE ✅
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -114,7 +114,7 @@ iOS:     VM:9223 (direct) → iOS Simulator (on VM)
 | Wrapper Scripts | ✅ Done | Nice process names in Activity Monitor |
 | Version Endpoint | ✅ Done | `/version` endpoint + `flutter_version` tool |
 | VM Services | ✅ Done | Migrated to new naming |
-| Host Services | ⏳ Pending | Awaiting user to run update script |
+| Host Services | ✅ Done | Deployed 2026-01-31 |
 
 **Service Naming:**
 - `com.erace.flutter-control.ios` - iOS MCP server (VM)

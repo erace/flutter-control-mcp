@@ -27,21 +27,95 @@ def _get_driver_client(port: int = OBSERVATORY_PORT_ANDROID):
     return _driver_client
 
 
+async def _rediscover_driver(trace) -> "FlutterDriverClient":
+    """Rediscover and reconnect to Flutter Driver. Returns new client or None."""
+    global _driver_client
+    from ..driver import FlutterDriverClient
+
+    trace.log("REDISCOVER_START", "Discovering fresh VM service URI")
+    uri = await _discover_vm_service_uri(trace)
+    if not uri:
+        trace.log("REDISCOVER_FAIL", "No VM service URI found")
+        return None
+
+    # Extract port and set up forwarding
+    import re
+    port_match = re.search(r":(\d+)/", uri)
+    if not port_match:
+        return None
+
+    device_port = int(port_match.group(1))
+    host_port = OBSERVATORY_PORT_ANDROID
+    if not await _forward_vm_service_port(trace, device_port, host_port):
+        return None
+
+    # Create new client with fresh URI
+    forwarded_uri = uri.replace(f"127.0.0.1:{device_port}", f"localhost:{host_port}")
+    _driver_client = FlutterDriverClient(port=host_port, uri=forwarded_uri)
+
+    if await _driver_client.connect(trace):
+        trace.log("REDISCOVER_OK", f"Connected: {forwarded_uri}")
+        return _driver_client
+
+    return None
+
+
 def _get_unified_executor():
     """Get or create unified executor."""
     global _unified_executor
     if _unified_executor is None:
         from ..unified import UnifiedExecutor
-        _unified_executor = UnifiedExecutor(_maestro, _get_driver_client())
+        _unified_executor = UnifiedExecutor(_maestro, _get_driver_client(), rediscover_callback=_rediscover_driver)
     return _unified_executor
 
 
 async def _ensure_driver_connected(trace: TraceContext, port: int = OBSERVATORY_PORT_ANDROID) -> bool:
-    """Ensure driver is connected."""
+    """Ensure driver is connected, with auto-rediscovery if needed."""
+    global _driver_client, _unified_executor
     client = _get_driver_client(port)
-    if client.ws is None:
-        return await client.connect(trace)
-    return True
+
+    # If already connected, we're good
+    if client.is_connected:
+        return True
+
+    # Try to reconnect with existing URI
+    if client._uri:
+        trace.log("DRIVER_RECONNECT", "Attempting reconnect with existing URI")
+        if await client.connect(trace):
+            return True
+        trace.log("DRIVER_RECONNECT_FAIL", "Reconnect failed, will rediscover")
+
+    # Rediscover VM service URI
+    trace.log("DRIVER_REDISCOVER", "Discovering fresh VM service URI")
+    uri = await _discover_vm_service_uri(trace)
+    if not uri:
+        trace.log("DRIVER_ERR", "No VM service URI found during rediscovery")
+        return False
+
+    # Extract port and set up forwarding
+    import re
+    port_match = re.search(r":(\d+)/", uri)
+    if not port_match:
+        trace.log("DRIVER_ERR", f"Could not parse port from URI: {uri}")
+        return False
+
+    device_port = int(port_match.group(1))
+    if not await _forward_vm_service_port(trace, device_port, port):
+        trace.log("DRIVER_ERR", f"Failed to forward port {device_port}")
+        return False
+
+    # Create new client with fresh URI
+    forwarded_uri = uri.replace(f"127.0.0.1:{device_port}", f"localhost:{port}")
+    from ..driver import FlutterDriverClient
+    _driver_client = FlutterDriverClient(port=port, uri=forwarded_uri)
+    _unified_executor = None  # Reset executor to pick up new client
+
+    if await _driver_client.connect(trace):
+        trace.log("DRIVER_RECONNECTED", f"Connected with fresh URI: {forwarded_uri}")
+        return True
+
+    trace.log("DRIVER_ERR", "Failed to connect with fresh URI")
+    return False
 
 def _find_adb() -> Optional[str]:
     """Find ADB binary."""
@@ -59,42 +133,75 @@ _adb_path = _find_adb()
 
 
 async def _discover_vm_service_uri(trace: TraceContext, device: Optional[str] = None) -> Optional[str]:
-    """Discover VM service URI from device logcat."""
-    if not _adb_path:
-        return None
+    """Discover VM service URI from device logs (Android or iOS)."""
+    import re
 
-    cmd = [_adb_path]
-    if device:
-        cmd.extend(["-s", device])
-    cmd.extend(["logcat", "-d"])
-
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
-        output = stdout.decode("utf-8", errors="replace")
-
-        # Find the most recent VM service URI
+    def _extract_uri(output: str) -> Optional[str]:
+        """Extract VM service URI from log output."""
         for line in reversed(output.split("\n")):
             if "Dart VM service is listening on" in line or "Observatory listening on" in line:
-                # Extract URI from line like: "The Dart VM service is listening on http://127.0.0.1:42291/1wQVtz5YTB0=/"
-                import re
                 match = re.search(r"http://[^\s]+", line)
                 if match:
-                    uri = match.group(0)
-                    trace.log("DISCOVER_URI", uri)
-                    return uri
-        return None
-    except Exception as e:
-        trace.log("DISCOVER_ERR", str(e))
+                    return match.group(0)
         return None
 
+    # Try Android (adb logcat) if adb is available
+    if _adb_path:
+        cmd = [_adb_path]
+        if device:
+            cmd.extend(["-s", device])
+        cmd.extend(["logcat", "-d"])
 
-async def _forward_vm_service_port(trace: TraceContext, device_port: int, host_port: int = 9223, device: Optional[str] = None) -> bool:
-    """Forward VM service port from device to host."""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+            output = stdout.decode("utf-8", errors="replace")
+            uri = _extract_uri(output)
+            if uri:
+                trace.log("DISCOVER_URI", f"Android: {uri}")
+                return uri
+        except Exception as e:
+            trace.log("DISCOVER_ADB_ERR", str(e))
+
+    # Try iOS (simctl log) if device looks like a UDID or on macOS
+    # iOS simulator UDIDs are in format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    is_ios_udid = device and len(device) == 36 and device.count("-") == 4
+    if is_ios_udid or not _adb_path:
+        try:
+            # Use log show to get recent Flutter logs
+            cmd = ["log", "show", "--predicate", "process == 'Runner'", "--last", "5m", "--style", "compact"]
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=15)
+            output = stdout.decode("utf-8", errors="replace")
+            uri = _extract_uri(output)
+            if uri:
+                trace.log("DISCOVER_URI", f"iOS: {uri}")
+                return uri
+        except Exception as e:
+            trace.log("DISCOVER_IOS_ERR", str(e))
+
+    return None
+
+
+async def _forward_vm_service_port(trace: TraceContext, device_port: int, host_port: int = 9223, device: Optional[str] = None, is_ios: bool = False) -> bool:
+    """Forward VM service port from device to host.
+
+    For iOS simulator, no forwarding is needed (returns True immediately).
+    For Android, uses adb forward.
+    """
+    # iOS simulator runs on same machine - no port forwarding needed
+    if is_ios:
+        trace.log("FORWARD_SKIP", "iOS simulator - no forwarding needed")
+        return True
+
     if not _adb_path:
         return False
 
@@ -256,6 +363,198 @@ async def _flutter_run(
         return {"success": False, "error": str(e)}
 
 
+async def _ios_list_devices(trace: TraceContext) -> Dict[str, Any]:
+    """List iOS simulators using xcrun simctl."""
+    import json as json_module
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "xcrun", "simctl", "list", "devices", "-j",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+
+        if process.returncode != 0:
+            error = stderr.decode("utf-8", errors="replace")
+            trace.log("SIMCTL_ERR", error)
+            return {"success": False, "error": f"simctl failed: {error}"}
+
+        data = json_module.loads(stdout.decode("utf-8"))
+        devices = data.get("devices", {})
+
+        # Find booted devices
+        booted = []
+        available = []
+        for runtime, device_list in devices.items():
+            for device in device_list:
+                if device.get("isAvailable", False):
+                    device_info = {
+                        "name": device["name"],
+                        "udid": device["udid"],
+                        "state": device["state"],
+                        "runtime": runtime.split(".")[-1] if "." in runtime else runtime,
+                    }
+                    if device["state"] == "Booted":
+                        booted.append(device_info)
+                    available.append(device_info)
+
+        trace.log("SIMCTL_OK", f"{len(booted)} booted, {len(available)} available")
+        return {
+            "success": True,
+            "booted": booted,
+            "available": available,
+            "output": f"{len(booted)} booted, {len(available)} available simulators",
+        }
+    except asyncio.TimeoutError:
+        trace.log("SIMCTL_ERR", "Timeout")
+        return {"success": False, "error": "simctl timeout"}
+    except Exception as e:
+        trace.log("SIMCTL_ERR", str(e))
+        return {"success": False, "error": str(e)}
+
+
+async def _ios_boot_simulator(
+    trace: TraceContext, device_name: Optional[str] = None, udid: Optional[str] = None
+) -> Dict[str, Any]:
+    """Boot an iOS simulator by name or UDID."""
+    import json as json_module
+
+    # If no UDID provided, find it by name
+    if not udid and device_name:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "xcrun", "simctl", "list", "devices", "-j",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30)
+            data = json_module.loads(stdout.decode("utf-8"))
+
+            for _runtime, device_list in data.get("devices", {}).items():
+                for device in device_list:
+                    if device["name"] == device_name and device.get("isAvailable", False):
+                        udid = device["udid"]
+                        break
+                if udid:
+                    break
+
+            if not udid:
+                return {"success": False, "error": f"Simulator not found: {device_name}"}
+        except Exception as e:
+            return {"success": False, "error": f"Failed to find simulator: {e}"}
+
+    if not udid:
+        return {"success": False, "error": "No device_name or udid provided"}
+
+    # Check if already booted
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "xcrun", "simctl", "list", "devices", "-j",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30)
+        data = json_module.loads(stdout.decode("utf-8"))
+
+        for _runtime, device_list in data.get("devices", {}).items():
+            for device in device_list:
+                if device["udid"] == udid and device["state"] == "Booted":
+                    trace.log("SIMCTL_BOOT", f"Already booted: {udid}")
+                    return {
+                        "success": True,
+                        "device_id": udid,
+                        "message": "Simulator already booted",
+                    }
+    except Exception:
+        pass
+
+    # Boot the simulator
+    trace.log("SIMCTL_BOOT", f"Booting {udid}")
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "xcrun", "simctl", "boot", udid,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+
+        if process.returncode != 0:
+            error = stderr.decode("utf-8", errors="replace")
+            # "Unable to boot device in current state: Booted" is not an error
+            if "Booted" in error:
+                return {"success": True, "device_id": udid, "message": "Simulator already booted"}
+            trace.log("SIMCTL_ERR", error)
+            return {"success": False, "error": f"Failed to boot: {error}"}
+
+        # Wait for simulator to be ready
+        await asyncio.sleep(5)
+
+        trace.log("SIMCTL_OK", f"Booted {udid}")
+        return {
+            "success": True,
+            "device_id": udid,
+            "message": "Simulator booted successfully",
+        }
+    except asyncio.TimeoutError:
+        trace.log("SIMCTL_ERR", "Boot timeout")
+        return {"success": False, "error": "Simulator boot timeout"}
+    except Exception as e:
+        trace.log("SIMCTL_ERR", str(e))
+        return {"success": False, "error": str(e)}
+
+
+async def _ios_shutdown_simulator(trace: TraceContext, udid: Optional[str] = None) -> Dict[str, Any]:
+    """Shutdown an iOS simulator."""
+    import json as json_module
+
+    # If no UDID, find the first booted simulator
+    if not udid:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "xcrun", "simctl", "list", "devices", "-j",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30)
+            data = json_module.loads(stdout.decode("utf-8"))
+
+            for _runtime, device_list in data.get("devices", {}).items():
+                for device in device_list:
+                    if device["state"] == "Booted":
+                        udid = device["udid"]
+                        break
+                if udid:
+                    break
+
+            if not udid:
+                return {"success": True, "message": "No booted simulators to shutdown"}
+        except Exception as e:
+            return {"success": False, "error": f"Failed to find simulator: {e}"}
+
+    trace.log("SIMCTL_SHUTDOWN", udid)
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "xcrun", "simctl", "shutdown", udid,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
+
+        if process.returncode != 0:
+            error = stderr.decode("utf-8", errors="replace")
+            trace.log("SIMCTL_ERR", error)
+            return {"success": False, "error": f"Failed to shutdown: {error}"}
+
+        trace.log("SIMCTL_OK", f"Shutdown {udid}")
+        return {"success": True, "device_id": udid, "message": "Simulator shutdown"}
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "Shutdown timeout"}
+    except Exception as e:
+        trace.log("SIMCTL_ERR", str(e))
+        return {"success": False, "error": str(e)}
+
+
 TOOLS = [
     {
         "name": "flutter_tap",
@@ -351,13 +650,14 @@ TOOLS = [
     },
     {
         "name": "flutter_assert_not_visible",
-        "description": "Assert that an element is NOT visible on screen.",
+        "description": "Assert that an element is NOT visible on screen. Auto-selects backend with fallback.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "finder": {"type": "object"},
+                "finder": {"type": "object", "description": "Element finder: {text:'...'}, {id:'...'}, {key:'...'}, or {type:'...'}"},
                 "timeout": {"type": "integer"},
                 "device": {"type": "string"},
+                "backend": {"type": "string", "enum": ["auto", "maestro", "driver"], "description": "Force specific backend (default: auto)"},
             },
             "required": ["finder"],
         },
@@ -495,6 +795,36 @@ TOOLS = [
             "properties": {},
         },
     },
+    # iOS Simulator lifecycle tools
+    {
+        "name": "ios_list_devices",
+        "description": "List iOS simulators and their status. Returns available simulators grouped by runtime.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "ios_boot_simulator",
+        "description": "Boot an iOS simulator by name or UDID.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "device_name": {"type": "string", "description": "Simulator name (e.g., 'iPhone 16e')"},
+                "udid": {"type": "string", "description": "Simulator UDID (takes precedence over device_name)"},
+            },
+        },
+    },
+    {
+        "name": "ios_shutdown_simulator",
+        "description": "Shutdown an iOS simulator.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "udid": {"type": "string", "description": "Simulator UDID (default: first booted simulator)"},
+            },
+        },
+    },
 ]
 
 
@@ -579,8 +909,21 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         return response
 
     elif name == "flutter_assert_not_visible":
-        result = await _maestro.assert_not_visible(arguments["finder"], trace, timeout, device)
-        return {"success": result.success, "error": result.error_message}
+        backend_arg = arguments.get("backend", "auto")
+        finder = arguments["finder"].copy()
+        if backend_arg != "auto":
+            finder["backend"] = backend_arg
+
+        executor = _get_unified_executor()
+        result = await executor.assert_not_visible(finder, trace, timeout, device)
+        response = {
+            "success": result.success,
+            "error": result.error,
+            "backend": result.backend_used.value if result.backend_used else None,
+        }
+        if result.fallback_occurred:
+            response["fallback"] = True
+        return response
 
     elif name == "flutter_screenshot":
         result = await _maestro.screenshot(trace, timeout, device)
@@ -609,9 +952,11 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         uri = arguments.get("uri")
         port = arguments.get("port", OBSERVATORY_PORT_ANDROID)
         host = arguments.get("host", "localhost")
-        global _driver_client
+        global _driver_client, _unified_executor
         from ..driver import FlutterDriverClient
         _driver_client = FlutterDriverClient(host=host, port=port, uri=uri)
+        # Reset unified executor so it picks up the new driver client
+        _unified_executor = None
         connected = await _driver_client.connect(trace)
         if connected:
             target = uri if uri else f"{host}:{port}"
@@ -629,7 +974,10 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         device_id = arguments.get("device")
         host_port = arguments.get("host_port", 9223)
 
-        # Discover VM service URI from logcat
+        # Detect if this is an iOS simulator (UDID format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)
+        is_ios = device_id and len(device_id) == 36 and device_id.count("-") == 4
+
+        # Discover VM service URI from device logs
         uri = await _discover_vm_service_uri(trace, device_id)
         if not uri:
             return {"success": False, "error": "No VM service URI found. Is a Flutter app with driver extension running?"}
@@ -642,18 +990,24 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
 
         device_port = int(port_match.group(1))
 
-        # Set up port forwarding
-        if not await _forward_vm_service_port(trace, device_port, host_port, device_id):
+        # Set up port forwarding (not needed for iOS simulator)
+        if not await _forward_vm_service_port(trace, device_port, host_port, device_id, is_ios=is_ios):
             return {"success": False, "error": f"Failed to forward port {device_port} to {host_port}"}
 
-        # Return the forwarded URI (replace device port with host port)
-        forwarded_uri = uri.replace(f"127.0.0.1:{device_port}", f"localhost:{host_port}")
+        # For iOS, use URI as-is; for Android, use forwarded URI
+        if is_ios:
+            result_uri = uri
+            message = f"VM service discovered at {uri}"
+        else:
+            result_uri = uri.replace(f"127.0.0.1:{device_port}", f"localhost:{host_port}")
+            message = f"VM service discovered and forwarded to localhost:{host_port}"
+
         return {
             "success": True,
-            "uri": forwarded_uri,
+            "uri": result_uri,
             "device_port": device_port,
-            "host_port": host_port,
-            "message": f"VM service discovered and forwarded to localhost:{host_port}",
+            "host_port": host_port if not is_ios else device_port,
+            "message": message,
         }
 
     elif name == "flutter_get_text":
@@ -744,6 +1098,19 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
             "git_commit": git_commit,
             "hostname": platform.node(),
         }
+
+    # iOS Simulator lifecycle tools
+    elif name == "ios_list_devices":
+        return await _ios_list_devices(trace)
+
+    elif name == "ios_boot_simulator":
+        device_name = arguments.get("device_name")
+        udid = arguments.get("udid")
+        return await _ios_boot_simulator(trace, device_name, udid)
+
+    elif name == "ios_shutdown_simulator":
+        udid = arguments.get("udid")
+        return await _ios_shutdown_simulator(trace, udid)
 
     else:
         return {"success": False, "error": f"Unknown tool: {name}"}

@@ -170,10 +170,16 @@ cat > "$HOME/Library/LaunchAgents/com.erace.flutter-control.observatory-bridge.p
 </plist>
 EOF
 
-# Load new services
+# Load/restart services
 echo "Starting services..."
-launchctl load "$HOME/Library/LaunchAgents/com.erace.flutter-control.android.plist"
-launchctl load "$HOME/Library/LaunchAgents/com.erace.flutter-control.observatory-bridge.plist"
+# Unload first (ignore errors if not loaded)
+launchctl bootout gui/$(id -u)/com.erace.flutter-control.android 2>/dev/null || true
+launchctl bootout gui/$(id -u)/com.erace.flutter-control.observatory-bridge 2>/dev/null || true
+sleep 1
+# Load fresh
+launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/com.erace.flutter-control.android.plist" 2>/dev/null || \
+    launchctl kickstart -k gui/$(id -u)/com.erace.flutter-control.android 2>/dev/null || true
+launchctl bootstrap gui/$(id -u) "$HOME/Library/LaunchAgents/com.erace.flutter-control.observatory-bridge.plist" 2>/dev/null || true
 
 sleep 3
 

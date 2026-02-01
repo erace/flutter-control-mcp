@@ -40,6 +40,12 @@ class FlutterDriverClient:
         self.isolate_id: Optional[str] = None
         self._pending: Dict[str, asyncio.Future] = {}
         self._receive_task: Optional[asyncio.Task] = None
+        self._reconnect_lock = asyncio.Lock()
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if connected to Observatory."""
+        return self.ws is not None and self.isolate_id is not None
 
     @property
     def ws_url(self) -> str:
@@ -116,6 +122,42 @@ class FlutterDriverClient:
                 trace.log("DRIVER_ERR", f"Connection failed: {e}")
             return False
 
+    async def ensure_connected(self, trace: Optional[TraceContext] = None) -> bool:
+        """Ensure connection is alive, reconnect if needed."""
+        if self.is_connected:
+            return True
+
+        # Use lock to prevent multiple simultaneous reconnect attempts
+        async with self._reconnect_lock:
+            # Double-check after acquiring lock
+            if self.is_connected:
+                return True
+
+            if trace:
+                trace.log("DRIVER_RECONNECT", "Connection lost, reconnecting...")
+
+            # Clean up any stale state
+            if self._receive_task:
+                self._receive_task.cancel()
+                try:
+                    await self._receive_task
+                except asyncio.CancelledError:
+                    pass
+                self._receive_task = None
+
+            if self.ws:
+                try:
+                    await self.ws.close()
+                except Exception:
+                    pass
+                self.ws = None
+
+            self.isolate_id = None
+            self._pending.clear()
+
+            # Reconnect
+            return await self.connect(trace)
+
     async def disconnect(self) -> None:
         """Disconnect from Observatory."""
         if self._receive_task:
@@ -143,6 +185,10 @@ class FlutterDriverClient:
             pass
         except Exception:
             pass
+        finally:
+            # Connection closed - mark as disconnected
+            self.ws = None
+            self.isolate_id = None
 
     async def _send_request(
         self, method: str, params: Optional[Dict[str, Any]] = None
@@ -190,9 +236,10 @@ class FlutterDriverClient:
     async def execute(
         self, command: DriverRequest, trace: Optional[TraceContext] = None
     ) -> DriverResponse:
-        """Execute a Flutter Driver command."""
-        if not self.ws or not self.isolate_id:
-            return DriverResponse(success=False, error="Not connected")
+        """Execute a Flutter Driver command with auto-reconnect."""
+        # Ensure connected (auto-reconnect if needed)
+        if not await self.ensure_connected(trace):
+            return DriverResponse(success=False, error="Not connected and reconnect failed")
 
         if trace:
             trace.log("DRIVER_CMD", f"{command.command} {command.params}")
@@ -220,6 +267,14 @@ class FlutterDriverClient:
             if trace:
                 trace.log("DRIVER_ERR", f"{command.command} timeout")
             return DriverResponse(success=False, error="Command timeout")
+        except Exception as e:
+            # Connection likely dropped during send
+            if trace:
+                trace.log("DRIVER_ERR", f"{command.command} send failed: {e}")
+            # Mark as disconnected so next call will reconnect
+            self.ws = None
+            self.isolate_id = None
+            return DriverResponse(success=False, error=f"Send failed: {e}")
         finally:
             self._pending.pop(req_id, None)
 
