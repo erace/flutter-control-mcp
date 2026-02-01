@@ -195,7 +195,6 @@ export PATH="$PATH:/Users/admin/Library/Android/sdk/platform-tools"
 
 | Platform | Passed | Failed | Skipped | Duration |
 |----------|--------|--------|---------|----------|
-| iOS | 27 | 2 | 4 | ~7 min |
-| Android | 31 | 2 | 0 | ~8 min |
+| Android | 48 | 0 | 1 | ~6 min |
 
-Known failures: `test_double_tap_text`, `test_long_press_text` (element "Counter" not found on static text)
+Skipped: `test_get_text_by_type` - finding by generic `{type: "Text"}` matches multiple widgets

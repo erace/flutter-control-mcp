@@ -209,6 +209,14 @@ VM:9223 (relay) → Host:9233 (bridge) → Host:9223 (ADB fwd) → Emulator
 | Maestro not installed | `curl -Ls 'https://get.maestro.mobile.dev' \| bash` |
 | Screenshot slow | Maestro ~15s; use `flutter_screenshot_adb` (220ms) |
 | Driver 403 Forbidden | Auth token missing from URI - use `flutter_driver_discover` |
+| Too many elements (Driver) | Type finder `{type: "..."}` matched multiple widgets; use unique type or key finder |
+
+## Finder Best Practices
+
+- **Prefer key finders** (`{key: "..."}`) for reliable, unambiguous targeting
+- **Type finders** (`{type: "..."}`) only work when exactly one widget matches - use unique types like `TextButton` not `ElevatedButton` or `Text`
+- **Text finders** (`{text: "..."}`) use partial matching - "Submit" matches "Submit Order"
+- For `flutter_get_text`, always use key finders since type finders often match multiple Text widgets
 
 ## Test App
 
