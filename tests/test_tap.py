@@ -111,8 +111,11 @@ class TestTapByType:
         platform: str,
         timing_collector: TimingCollector,
     ):
-        """Test tapping by widget type with unified backend."""
-        finder = {"type": "ElevatedButton"}
+        """Test tapping by widget type with unified backend.
+
+        Uses TextButton which has only one instance (Reset button).
+        """
+        finder = {"type": "TextButton"}
 
         async with timing_collector.measure("tap_type", platform, backend="unified"):
             result = await mcp_client.call("flutter_tap", {"finder": finder})
@@ -126,8 +129,11 @@ class TestTapByType:
         platform: str,
         timing_collector: TimingCollector,
     ):
-        """Test tapping by widget type with driver backend."""
-        finder = {"type": "ElevatedButton", "backend": "driver"}
+        """Test tapping by widget type with driver backend.
+
+        Uses TextButton which has only one instance (Reset button).
+        """
+        finder = {"type": "TextButton", "backend": "driver"}
 
         async with timing_collector.measure("tap_type", platform, backend="driver"):
             result = await mcp_client.call("flutter_tap", {"finder": finder})

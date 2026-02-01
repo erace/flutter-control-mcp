@@ -27,14 +27,32 @@ class FlowBuilder:
         self.commands.append(f"- tapOn:\n    id: \"{element_id}\"")
         return self
 
-    def long_press_text(self, text: str) -> "FlowBuilder":
-        """Long press on element by text."""
-        self.commands.append(f"- longPressOn: \"{text}\"")
+    def long_press_text(self, text: str, partial: bool = True) -> "FlowBuilder":
+        """Long press on element by text.
+
+        Args:
+            text: Text to find
+            partial: If True, use partial matching (regex .*text.*)
+        """
+        if partial and not text.startswith(".*"):
+            pattern = f".*{text}.*"
+        else:
+            pattern = text
+        self.commands.append(f"- longPressOn: \"{pattern}\"")
         return self
 
-    def double_tap_text(self, text: str) -> "FlowBuilder":
-        """Double tap on element by text."""
-        self.commands.append(f"- doubleTapOn: \"{text}\"")
+    def double_tap_text(self, text: str, partial: bool = True) -> "FlowBuilder":
+        """Double tap on element by text.
+
+        Args:
+            text: Text to find
+            partial: If True, use partial matching (regex .*text.*)
+        """
+        if partial and not text.startswith(".*"):
+            pattern = f".*{text}.*"
+        else:
+            pattern = text
+        self.commands.append(f"- doubleTapOn: \"{pattern}\"")
         return self
 
     def enter_text(self, text: str, element_text: Optional[str] = None, element_id: Optional[str] = None) -> "FlowBuilder":
