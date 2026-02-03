@@ -325,6 +325,15 @@ async def _forward_vm_service_port(trace: TraceContext, device_port: int, host_p
         return False
 
 
+def _get_screenshot_path(trace_id: str, platform: str) -> Path:
+    """Get path for saving screenshot."""
+    from datetime import datetime
+    log_dir = Path.home() / "Library" / "Logs" / "flutter-control" / "screenshots"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return log_dir / f"{timestamp}_{platform}_{trace_id}.png"
+
+
 async def _adb_screenshot(trace: TraceContext, device: Optional[str] = None) -> Dict[str, Any]:
     """Take screenshot using ADB screencap."""
     if not _adb_path:
@@ -355,15 +364,17 @@ async def _adb_screenshot(trace: TraceContext, device: Optional[str] = None) -> 
             trace.log("ADB_ERR", "Empty or invalid screenshot")
             return {"success": False, "error": "Empty screenshot"}
 
-        image_b64 = base64.b64encode(stdout).decode("utf-8")
-        trace.log("ADB_OK", f"{len(stdout)} bytes")
+        # Save to file instead of returning base64
+        screenshot_path = _get_screenshot_path(trace.trace_id, "android")
+        screenshot_path.write_bytes(stdout)
+        trace.log("ADB_OK", f"{len(stdout)} bytes -> {screenshot_path}")
 
         return {
             "success": True,
             "error": None,
-            "image": image_b64,
+            "path": str(screenshot_path),
+            "size_bytes": len(stdout),
             "format": "png",
-            "encoding": "base64",
         }
     except asyncio.TimeoutError:
         trace.log("ADB_ERR", "Timeout")
@@ -375,18 +386,16 @@ async def _adb_screenshot(trace: TraceContext, device: Optional[str] = None) -> 
 
 async def _simctl_screenshot(trace: TraceContext, device: Optional[str] = None) -> Dict[str, Any]:
     """Take screenshot using xcrun simctl (iOS simulator)."""
-    import tempfile
     import os
 
     # Use booted device if not specified
     device_arg = device or "booted"
 
-    # Create temp file for screenshot
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-        temp_path = f.name
+    # Save directly to final location
+    screenshot_path = _get_screenshot_path(trace.trace_id, "ios")
 
     try:
-        cmd = ["xcrun", "simctl", "io", device_arg, "screenshot", temp_path]
+        cmd = ["xcrun", "simctl", "io", device_arg, "screenshot", str(screenshot_path)]
         trace.log("SIMCTL_CMD", " ".join(cmd))
 
         process = await asyncio.create_subprocess_exec(
@@ -401,23 +410,21 @@ async def _simctl_screenshot(trace: TraceContext, device: Optional[str] = None) 
             trace.log("SIMCTL_ERR", error)
             return {"success": False, "error": f"simctl failed: {error}"}
 
-        # Read the screenshot file
-        with open(temp_path, "rb") as f:
-            image_data = f.read()
-
-        if len(image_data) < 100:
+        # Check file size
+        size_bytes = screenshot_path.stat().st_size
+        if size_bytes < 100:
             trace.log("SIMCTL_ERR", "Empty or invalid screenshot")
+            screenshot_path.unlink(missing_ok=True)
             return {"success": False, "error": "Empty screenshot"}
 
-        image_b64 = base64.b64encode(image_data).decode("utf-8")
-        trace.log("SIMCTL_OK", f"{len(image_data)} bytes")
+        trace.log("SIMCTL_OK", f"{size_bytes} bytes -> {screenshot_path}")
 
         return {
             "success": True,
             "error": None,
-            "image": image_b64,
+            "path": str(screenshot_path),
+            "size_bytes": size_bytes,
             "format": "png",
-            "encoding": "base64",
         }
     except asyncio.TimeoutError:
         trace.log("SIMCTL_ERR", "Timeout")
@@ -425,12 +432,6 @@ async def _simctl_screenshot(trace: TraceContext, device: Optional[str] = None) 
     except Exception as e:
         trace.log("SIMCTL_ERR", str(e))
         return {"success": False, "error": str(e)}
-    finally:
-        # Clean up temp file
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
 
 
 async def _flutter_run(
@@ -1331,19 +1332,32 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         maestro_result = await _maestro.screenshot(trace, timeout, device)
         response = {"success": maestro_result.success, "error": maestro_result.error_message, "method": "maestro"}
         if maestro_result.screenshot_base64:
-            response["image"] = maestro_result.screenshot_base64
+            # Save to file instead of returning base64
+            platform = "ios" if is_ios else "android"
+            screenshot_path = _get_screenshot_path(trace.trace_id, f"{platform}_maestro")
+            image_data = base64.b64decode(maestro_result.screenshot_base64)
+            screenshot_path.write_bytes(image_data)
+            response["path"] = str(screenshot_path)
+            response["size_bytes"] = len(image_data)
             response["format"] = "png"
-            response["encoding"] = "base64"
         return response
 
     elif name == "flutter_screenshot_maestro":
         # Explicit Maestro screenshot
+        import os as os_mod
+        server_port = int(os_mod.environ.get("FLUTTER_CONTROL_PORT", "9225"))
+        platform = "ios" if server_port == 9226 else "android"
+
         result = await _maestro.screenshot(trace, timeout, device)
         response = {"success": result.success, "error": result.error_message, "method": "maestro"}
         if result.screenshot_base64:
-            response["image"] = result.screenshot_base64
+            # Save to file instead of returning base64
+            screenshot_path = _get_screenshot_path(trace.trace_id, f"{platform}_maestro")
+            image_data = base64.b64decode(result.screenshot_base64)
+            screenshot_path.write_bytes(image_data)
+            response["path"] = str(screenshot_path)
+            response["size_bytes"] = len(image_data)
             response["format"] = "png"
-            response["encoding"] = "base64"
         return response
 
     elif name == "flutter_debug_trace":

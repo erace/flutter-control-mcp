@@ -131,3 +131,14 @@ WebSocket:  ws://localhost:9223/1wQVtz5YTB0=/ws  ← token required!
 - Keep Maestro in "studio" mode for faster command execution
 - Use ADB for simple operations (screenshot, tap coordinates)
 - Cache VM service connection across commands
+
+## Backlog
+
+### MCP shutdown message on Claude Code exit
+- **Issue**: Claude Code shows "3 MCP failed" message when exiting
+- **Status**: Cosmetic only - servers exit cleanly with code 0
+- **Cause**: Claude Code reports all disconnected MCP servers as "failed" regardless of clean shutdown
+- **Possible fixes**:
+  - Investigate if MCP protocol has a specific shutdown handshake
+  - Check if Claude Code expects a specific response before disconnect
+  - May require upstream fix in Claude Code
