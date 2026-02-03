@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 # Get current version from __version__.py
 VERSION_FILE="flutter_control/__version__.py"
-CURRENT_VERSION=$(grep -oP '__version__ = "\K[^"]+' "$VERSION_FILE")
+CURRENT_VERSION=$(python3 -c "exec(open('$VERSION_FILE').read()); print(__version__)")
 
 if [ -z "$CURRENT_VERSION" ]; then
     echo -e "${RED}Error: Could not read current version from $VERSION_FILE${NC}"
@@ -66,10 +66,11 @@ echo "Updated pyproject.toml"
 
 # Update CHANGELOG.md - add new version header
 TODAY=$(date +%Y-%m-%d)
-sed -i '' "s/## \[Unreleased\]/## [Unreleased]\n\n## [$NEW_VERSION] - $TODAY/" CHANGELOG.md
+# Use perl for more reliable multiline replacement
+perl -i -pe "s/## \[Unreleased\]/## [Unreleased]\n\n## [$NEW_VERSION] - $TODAY/" CHANGELOG.md
 
 # Update changelog links
-sed -i '' "s|\[Unreleased\]: \(.*\)/compare/v$CURRENT_VERSION...HEAD|[Unreleased]: \1/compare/v$NEW_VERSION...HEAD\n[$NEW_VERSION]: \1/compare/v$CURRENT_VERSION...v$NEW_VERSION|" CHANGELOG.md
+perl -i -pe "s|\[Unreleased\]: (.*)/compare/v$CURRENT_VERSION\.\.\.HEAD|[Unreleased]: \$1/compare/v$NEW_VERSION...HEAD\n[$NEW_VERSION]: \$1/compare/v$CURRENT_VERSION...v$NEW_VERSION|" CHANGELOG.md
 echo "Updated CHANGELOG.md"
 
 # Commit version bump

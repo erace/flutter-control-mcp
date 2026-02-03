@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-02-03
+
 ### Added
 - pip installation from GitHub (`pip install git+https://...`)
 - CLI commands: `flutter-control-install`, `flutter-control-uninstall`, `flutter-control-server`
@@ -51,5 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screenshots: ~0.6s (was ~15s)
 - View hierarchy: ~0.5s (was ~15s)
 
-[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/erace/flutter-control-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/erace/flutter-control-mcp/releases/tag/v0.1.0
