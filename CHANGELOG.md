@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-02-03
+
+### Added
+- **uvx/pipx support**: Standard MCP installation pattern
+  - New `flutter-control-mcp` CLI entry point for stdio MCP server
+  - Works with `uvx flutter-control-mcp` (no install needed)
+- Version-agnostic `update.sh` script (auto-detects wheel version)
+
+### Changed
+- **Simplified configuration**: Single `ANDROID_HOST` env var for all Android services
+  - Replaces: `ANDROID_MCP_HOST`, `ANDROID_MCP_PORT`, `ANDROID_MCP_BRIDGE_HOST`, `ANDROID_MCP_BRIDGE_PORT`
+  - Defaults to `phost.local` (mDNS) - works across networks
+  - Ports use sensible defaults (9225 for Flutter Control, 9222 for Bridge)
+- MCP client config now uses uvx pattern
+- Test bootstrap properly passes `ADB_SERVER_SOCKET` to subprocesses
+- Fixed device ID parsing for Android MCP Bridge output format
+
+### Removed
+- Legacy curl-based installation scripts (`scripts/install.sh`, `scripts/update-host.sh`)
+- Standalone `flutter-control-stdio.py` (moved to `flutter_control.cli:mcp_stdio`)
+- Deprecated env vars: `ANDROID_MCP_HOST`, `ANDROID_MCP_BRIDGE_HOST` (use `ANDROID_HOST`)
+
+### Fixed
+- Bootstrap now creates venv if missing during updates
+- ADB commands in test bootstrap now work with remote ADB server
+
 ## [0.4.0] - 2026-02-03
 
 ### Added
@@ -93,7 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screenshots: ~0.6s (was ~15s)
 - View hierarchy: ~0.5s (was ~15s)
 
-[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/erace/flutter-control-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/erace/flutter-control-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/erace/flutter-control-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/erace/flutter-control-mcp/compare/v0.1.0...v0.2.0
