@@ -103,8 +103,8 @@ All backends (Maestro + Driver) are then available for automation.
 
 **Host Mac (Android):**
 ```bash
-curl -sS http://192.168.64.100:9999/scripts/install.sh | bash      # Fresh install
-curl -sS http://192.168.64.100:9999/scripts/update-host.sh | bash  # Update
+curl -sS http://claude-dev.local:9999/scripts/install.sh | bash      # Fresh install
+curl -sS http://claude-dev.local:9999/scripts/update-host.sh | bash  # Update
 ```
 
 **VM (iOS):**
@@ -210,6 +210,27 @@ VM:9223 (relay) → Host:9233 (bridge) → Host:9223 (ADB fwd) → Emulator
 | Screenshot slow | Maestro ~15s; use `flutter_screenshot_adb` (220ms) |
 | Driver 403 Forbidden | Auth token missing from URI - use `flutter_driver_discover` |
 | Too many elements (Driver) | Type finder `{type: "..."}` matched multiple widgets; use unique type or key finder |
+| Tests fail "Tool not found" | Stale env vars - check `echo $ANDROID_MCP_HOST` (should be `phost.local`, not an IP) |
+| Wrong port (9222 vs 9225) | 9222 = android-mcp-bridge, 9225 = flutter-control. Check `$ANDROID_MCP_PORT` |
+
+## Network Configuration
+
+**Always use hostnames, never hardcode IPs.** IPs change when switching networks.
+
+| Hostname | Purpose |
+|----------|---------|
+| `phost.local` | Host Mac (resolves via mDNS/Bonjour) |
+| `claude-dev.local` | VM (resolves via mDNS/Bonjour) |
+| `localhost` | Same machine only |
+
+**Port Reference:**
+| Port | Service |
+|------|---------|
+| 9222 | android-mcp-bridge (device lifecycle) |
+| 9225 | flutter-control Android (automation) |
+| 9226 | flutter-control iOS (automation) |
+| 9223 | Observatory relay (hot reload) |
+| 9233 | Observatory bridge on host |
 
 ## Finder Best Practices
 
@@ -243,9 +264,9 @@ Bootstrap automatically:
 source .venv/bin/activate
 export PATH="$PATH:/Users/admin/Library/Android/sdk/platform-tools"
 
-# Run Android tests (FROM VM - note host IP!)
-TEST_PLATFORM=android ANDROID_MCP_HOST=192.168.64.1 ANDROID_MCP_PORT=9225 \
-  ANDROID_MCP_BRIDGE_HOST=192.168.64.1 ANDROID_MCP_BRIDGE_PORT=9222 \
+# Run Android tests (FROM VM - uses phost.local)
+TEST_PLATFORM=android ANDROID_MCP_HOST=phost.local ANDROID_MCP_PORT=9225 \
+  ANDROID_MCP_BRIDGE_HOST=phost.local ANDROID_MCP_BRIDGE_PORT=9222 \
   pytest tests/ -v
 
 # Run iOS tests

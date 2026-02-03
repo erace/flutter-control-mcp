@@ -345,7 +345,7 @@ cd ~/Projects/pl.erace.claude.flutter.control
 python3 -m http.server 9999 --bind 0.0.0.0
 
 # On host Mac - update deployment
-curl -sS http://192.168.64.100:9999/scripts/update-host.sh | bash
+curl -sS http://claude-dev.local:9999/scripts/update-host.sh | bash
 
 # Verify
 curl http://localhost:9225/health

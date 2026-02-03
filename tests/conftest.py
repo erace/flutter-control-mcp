@@ -28,6 +28,48 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "android_only: only runs on Android")
     config.addinivalue_line("markers", "ios_only: only runs on iOS")
 
+    # Validate environment variables - warn about stale IPs
+    _validate_environment()
+
+
+def _validate_environment():
+    """Check for potentially stale environment variables."""
+    warnings = []
+
+    # Check ANDROID_MCP_HOST
+    host = os.getenv("ANDROID_MCP_HOST", "")
+    if host and "192.168" in host:
+        warnings.append(
+            f"ANDROID_MCP_HOST={host} looks like a hardcoded IP.\n"
+            f"         Consider using: ANDROID_MCP_HOST=phost.local"
+        )
+
+    # Check ANDROID_MCP_PORT (common mistake: using bridge port 9222 instead of 9225)
+    port = os.getenv("ANDROID_MCP_PORT", "")
+    if port == "9222":
+        warnings.append(
+            f"ANDROID_MCP_PORT=9222 is the android-mcp-bridge port.\n"
+            f"         Flutter Control uses port 9225: ANDROID_MCP_PORT=9225"
+        )
+
+    # Check ANDROID_MCP_BRIDGE_HOST
+    bridge_host = os.getenv("ANDROID_MCP_BRIDGE_HOST", "")
+    if bridge_host and "192.168" in bridge_host:
+        warnings.append(
+            f"ANDROID_MCP_BRIDGE_HOST={bridge_host} looks like a hardcoded IP.\n"
+            f"         Consider using: ANDROID_MCP_BRIDGE_HOST=phost.local"
+        )
+
+    if warnings:
+        print("\n" + "=" * 60)
+        print("⚠️  ENVIRONMENT VARIABLE WARNINGS")
+        print("=" * 60)
+        for w in warnings:
+            print(f"  • {w}")
+        print("=" * 60)
+        print("Fix: Update ~/.zshrc or pass correct values explicitly")
+        print("=" * 60 + "\n")
+
 
 # Session-scoped fixtures
 
@@ -54,10 +96,10 @@ def bootstrap_result(platform_config: PlatformConfig) -> BootstrapResult:
     try:
         if platform_config.is_android:
             bootstrap = AndroidBootstrap(
-                mcp_bridge_host=os.getenv("ANDROID_MCP_BRIDGE_HOST", "192.168.64.1"),
+                mcp_bridge_host=os.getenv("ANDROID_MCP_BRIDGE_HOST", "phost.local"),
                 mcp_bridge_port=int(os.getenv("ANDROID_MCP_BRIDGE_PORT", "9222")),
                 token=token,
-                flutter_control_host=os.getenv("ANDROID_MCP_HOST", "192.168.64.1"),
+                flutter_control_host=os.getenv("ANDROID_MCP_HOST", "phost.local"),
                 flutter_control_port=int(os.getenv("ANDROID_MCP_PORT", "9225")),
             )
         else:

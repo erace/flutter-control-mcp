@@ -18,7 +18,7 @@ cd ..
 
 # 3. Run tests
 # Android (from VM - note the host IP!)
-TEST_PLATFORM=android ANDROID_MCP_HOST=192.168.64.1 ANDROID_MCP_PORT=9225 pytest tests/ -v -m "not driver_only"
+TEST_PLATFORM=android ANDROID_MCP_HOST=phost.local ANDROID_MCP_PORT=9225 pytest tests/ -v -m "not driver_only"
 
 # iOS
 TEST_PLATFORM=ios IOS_MCP_PORT=9226 pytest tests/ -v -m "not driver_only"
@@ -53,8 +53,8 @@ Before running tests:
 
 3. **MCP Servers**: Ensure servers are running
    ```bash
-   # Check Android server (host Mac at 192.168.64.1)
-   curl http://192.168.64.1:9225/health
+   # Check Android server (host Mac at phost.local)
+   curl http://phost.local:9225/health
 
    # Check iOS server (VM localhost)
    curl http://localhost:9226/health
@@ -74,7 +74,7 @@ Before running tests:
 
 ```bash
 # Android - MUST set ANDROID_MCP_HOST to host Mac IP
-TEST_PLATFORM=android ANDROID_MCP_HOST=192.168.64.1 ANDROID_MCP_PORT=9225 pytest tests/ -v -m "not driver_only"
+TEST_PLATFORM=android ANDROID_MCP_HOST=phost.local ANDROID_MCP_PORT=9225 pytest tests/ -v -m "not driver_only"
 
 # iOS - localhost works
 TEST_PLATFORM=ios IOS_MCP_PORT=9226 pytest tests/ -v -m "not driver_only"
@@ -107,7 +107,7 @@ pytest tests/ -v -m "not driver_only"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TEST_PLATFORM` | `android` | Platform to test (`android` or `ios`) |
-| `ANDROID_MCP_HOST` | `192.168.64.1` | Android MCP server host (**host Mac IP from VM**) |
+| `ANDROID_MCP_HOST` | `phost.local` | Android MCP server host (**host Mac IP from VM**) |
 | `ANDROID_MCP_PORT` | `9225` | Android MCP server port |
 | `IOS_MCP_HOST` | `localhost` | iOS MCP server host |
 | `IOS_MCP_PORT` | `9226` | iOS MCP server port |
@@ -116,7 +116,7 @@ pytest tests/ -v -m "not driver_only"
 | `TEST_DEVICE_ID` | - | Specific device ID to test on |
 | `FLUTTER_CONTROL_TOKEN` | - | Auth token (or reads from ~/.android-mcp-token) |
 
-**Note**: If shell has stale env vars, explicitly set them: `ANDROID_MCP_HOST=192.168.64.1`
+**Note**: If shell has stale env vars, explicitly set them: `ANDROID_MCP_HOST=phost.local`
 
 ## Test Categories
 
@@ -180,7 +180,7 @@ The report shows:
 | Auth error | Ensure token file exists at `~/.android-mcp-token` |
 | Driver tests fail | Run `flutter_driver_discover` and `flutter_driver_connect` first |
 | Slow tests timeout | Use `pytest --timeout=120` or skip with `-m "not slow"` |
-| Android tests fail with wrong host | Set `ANDROID_MCP_HOST=192.168.64.1` explicitly |
+| Android tests fail with wrong host | Set `ANDROID_MCP_HOST=phost.local` explicitly |
 | Maestro timeout (30s) | Restart host service: `launchctl kickstart -k gui/$(id -u)/com.erace.flutter-control.android` |
 | "No space left on device" | Run `rm -rf ~/.gradle/caches` then rebuild |
 | ADB not found | `export PATH="$PATH:/Users/admin/Library/Android/sdk/platform-tools"` |

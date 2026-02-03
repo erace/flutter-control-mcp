@@ -1,11 +1,11 @@
 #!/bin/bash
 # Update Flutter Control MCP server on host Mac
-# Run: curl -sS http://192.168.64.100:9999/scripts/update-host.sh | bash
+# Run: curl -sS http://claude-dev.local:9999/scripts/update-host.sh | bash
 
 set -e
 
 INSTALL_DIR="/usr/local/opt/flutter_control"
-VM_IP="${VM_IP:-192.168.64.100}"
+VM_IP="${VM_IP:-claude-dev.local}"
 VM_PORT="${VM_PORT:-9999}"
 LOG_DIR="$HOME/Library/Logs/flutter-control"
 

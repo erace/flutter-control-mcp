@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 
 # Config
-ANDROID_MCP_BRIDGE_HOST = "192.168.64.1"  # Host Mac from VM
+ANDROID_MCP_BRIDGE_HOST = "phost.local"  # Host Mac from VM
 ANDROID_MCP_BRIDGE_PORT = 9222
 DEFAULT_AVD = "Pixel_7_API_35"
 TEST_APP_PACKAGE = "com.example.flutter_control_test_app"
@@ -47,7 +47,7 @@ class AndroidBootstrap:
         mcp_bridge_host: str,
         mcp_bridge_port: int,
         token: str,
-        flutter_control_host: str = "192.168.64.1",
+        flutter_control_host: str = "phost.local",
         flutter_control_port: int = 9225,
     ):
         self.bridge_url = f"http://{mcp_bridge_host}:{mcp_bridge_port}"

@@ -7,7 +7,7 @@ import os
 import urllib.request
 import urllib.error
 
-HOST_IP = os.getenv("FLUTTER_CONTROL_HOST", "192.168.64.1")
+HOST_IP = os.getenv("FLUTTER_CONTROL_HOST", "phost.local")
 PORT = int(os.getenv("FLUTTER_CONTROL_PORT", "9225"))
 TOKEN_FILE = os.path.expanduser("~/.android-mcp-token")
 BASE_URL = f"http://{HOST_IP}:{PORT}"
