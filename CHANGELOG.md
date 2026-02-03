@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-02-03
+
+### Added
+- `android_list_devices`: List Android emulators, devices, and AVDs
+- `android_boot_emulator`: Start emulator by AVD name
+- `android_shutdown_emulator`: Stop Android emulator
+- iOS simctl screenshot support (fast native method)
+
+### Changed
+- `flutter_screenshot` now auto-selects fastest method per platform:
+  - Android: ADB screencap
+  - iOS: simctl io screenshot
+  - Falls back to Maestro on error
+- Renamed `flutter_screenshot` (Maestro) to `flutter_screenshot_maestro`
+- Removed `flutter_screenshot_adb` (merged into smart `flutter_screenshot`)
+- Consolidated `flutter_debug_traces` into `flutter_debug_trace`:
+  - `flutter_debug_trace {trace_id: "..."}` - get specific trace
+  - `flutter_debug_trace {count: N}` - get recent traces
+  - `flutter_debug_trace {}` - get last 5 traces
+
+### Removed
+- `flutter_screenshot_adb` - use `flutter_screenshot` instead
+- `flutter_debug_traces` - use `flutter_debug_trace` instead
+
 ## [0.3.0] - 2026-02-03
 
 ### Added
@@ -69,7 +93,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screenshots: ~0.6s (was ~15s)
 - View hierarchy: ~0.5s (was ~15s)
 
-[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/erace/flutter-control-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/erace/flutter-control-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/erace/flutter-control-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/erace/flutter-control-mcp/releases/tag/v0.1.0

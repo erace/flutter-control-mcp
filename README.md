@@ -140,9 +140,9 @@ curl -X POST http://localhost:9225/call \
 
 Force a specific backend: `{"text": "Submit", "backend": "maestro"}`
 
-## MCP Tools
+## MCP Tools (25)
 
-### UI Interactions
+### UI Interactions (6)
 
 | Tool | Description |
 |------|-------------|
@@ -153,32 +153,33 @@ Force a specific backend: `{"text": "Submit", "backend": "maestro"}`
 | `flutter_enter_text` | Type text into field |
 | `flutter_clear_text` | Clear current text field |
 
-### Assertions
+### Assertions (2)
 
 | Tool | Description |
 |------|-------------|
 | `flutter_assert_visible` | Assert element is visible |
 | `flutter_assert_not_visible` | Assert element is not visible |
 
-### Screenshots
+### Screenshots (2)
 
 | Tool | Description |
 |------|-------------|
-| `flutter_screenshot` | Screenshot via Maestro |
-| `flutter_screenshot_adb` | Screenshot via ADB (faster, Android only) |
+| `flutter_screenshot` | Smart: ADB (Android) / simctl (iOS), Maestro fallback |
+| `flutter_screenshot_maestro` | Explicit Maestro screenshot |
 
-### Flutter Driver
+### Flutter Driver (7)
 
 | Tool | Description |
 |------|-------------|
 | `flutter_driver_discover` | Find VM Service URI via mDNS |
 | `flutter_driver_connect` | Connect to VM Service |
 | `flutter_driver_disconnect` | Disconnect |
+| `flutter_driver_tap` | Tap via Driver (key/type finders) |
 | `flutter_get_text` | Get text from widget |
 | `flutter_widget_tree` | Dump render tree |
-| `flutter_driver_tap` | Tap via Driver (key/type finders) |
+| `flutter_run` | Launch app with Observatory |
 
-### iOS Simulator
+### iOS Lifecycle (3)
 
 | Tool | Description |
 |------|-------------|
@@ -186,13 +187,20 @@ Force a specific backend: `{"text": "Submit", "backend": "maestro"}`
 | `ios_boot_simulator` | Boot simulator by name or UDID |
 | `ios_shutdown_simulator` | Shutdown simulator |
 
-### Debug
+### Android Lifecycle (3)
 
 | Tool | Description |
 |------|-------------|
-| `flutter_version` | Get server version and info |
-| `flutter_debug_traces` | Get recent operation traces |
-| `flutter_debug_trace` | Get specific trace by ID |
+| `android_list_devices` | List emulators, devices, and AVDs |
+| `android_boot_emulator` | Boot emulator by AVD name |
+| `android_shutdown_emulator` | Shutdown emulator |
+
+### Debug (2)
+
+| Tool | Description |
+|------|-------------|
+| `flutter_version` | Server version and info |
+| `flutter_debug_trace` | Get trace(s) - by ID or recent |
 
 ## Examples
 
@@ -213,7 +221,7 @@ curl -X POST http://localhost:9225/call \
 curl -X POST http://localhost:9225/call \
   -d '{"name": "flutter_assert_visible", "arguments": {"finder": {"text": "Welcome"}}}'
 
-# Take screenshot
+# Take screenshot (auto-selects fastest method)
 curl -X POST http://localhost:9225/call \
   -d '{"name": "flutter_screenshot", "arguments": {}}'
 
@@ -221,9 +229,13 @@ curl -X POST http://localhost:9225/call \
 curl -X POST http://localhost:9225/call \
   -d '{"name": "flutter_swipe", "arguments": {"direction": "down"}}'
 
-# Enter text in field
+# List Android devices
 curl -X POST http://localhost:9225/call \
-  -d '{"name": "flutter_enter_text", "arguments": {"text": "hello@example.com", "finder": {"key": "email_field"}}}'
+  -d '{"name": "android_list_devices", "arguments": {}}'
+
+# Boot iOS simulator
+curl -X POST http://localhost:9226/call \
+  -d '{"name": "ios_boot_simulator", "arguments": {"device_name": "iPhone 16"}}'
 ```
 
 ## Development
