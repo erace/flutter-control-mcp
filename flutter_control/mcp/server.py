@@ -11,8 +11,7 @@ from pydantic import BaseModel
 
 from ..config import TOKEN, MCP_PORT, MCP_HOST
 from .tools import TOOLS, handle_tool_call
-
-VERSION = "1.0.0"
+from ..__version__ import __version__ as VERSION
 START_TIME = datetime.utcnow()
 
 # Detect platform based on port

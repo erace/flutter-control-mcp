@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-03
+
+### Added
+- mDNS discovery as primary method for both iOS and Android
+- `update.sh` script for easy host deployment via pip wheel
+- Version endpoint now reads from `__version__.py`
+
+### Changed
+- Discovery falls back to logcat for Android when mDNS unavailable
+- Port scan fallback for iOS as last resort
+- Android environment warnings only shown for Android tests
+- Simplified bootstrap to use MCP tools consistently
+
+### Fixed
+- Hardcoded version in server.py now imports from `__version__.py`
+
 ## [0.2.0] - 2025-02-03
 
 ### Added
@@ -53,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screenshots: ~0.6s (was ~15s)
 - View hierarchy: ~0.5s (was ~15s)
 
-[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/erace/flutter-control-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/erace/flutter-control-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/erace/flutter-control-mcp/releases/tag/v0.1.0

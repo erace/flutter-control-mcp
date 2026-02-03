@@ -55,6 +55,26 @@ def install_service():
         print("  curl -Ls 'https://get.maestro.mobile.dev' | bash")
         print()
 
+    # Find flutter
+    import shutil
+    flutter_bin = shutil.which("flutter")
+    flutter_path = Path(flutter_bin).parent if flutter_bin else Path.home() / "flutter" / "bin"
+    if not (flutter_path / "flutter").exists():
+        print("\n⚠ Flutter not found. The flutter_run tool won't work.")
+        print()
+
+    # Build PATH with all required tools
+    path_components = [
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        str(maestro_path),
+        str(flutter_path),
+        # Android SDK platform-tools (for adb)
+        str(Path.home() / "Library" / "Android" / "sdk" / "platform-tools"),
+    ]
+    service_path = ":".join(path_components)
+
     # Create LaunchAgent plist
     plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -75,7 +95,7 @@ def install_service():
         <key>FLUTTER_CONTROL_HOST</key>
         <string>{args.host}</string>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:{maestro_path}</string>
+        <string>{service_path}</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

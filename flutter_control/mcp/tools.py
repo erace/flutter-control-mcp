@@ -133,7 +133,8 @@ _adb_path = _find_adb()
 
 
 async def _discover_vm_service_uri(trace: TraceContext, device: Optional[str] = None) -> Optional[str]:
-    """Discover VM service URI from device logs (Android or iOS)."""
+    """Discover VM service URI using mDNS (preferred), with logcat fallback for Android."""
+    import os
     import re
 
     def _extract_uri(output: str) -> Optional[str]:
@@ -145,14 +146,107 @@ async def _discover_vm_service_uri(trace: TraceContext, device: Optional[str] = 
                     return match.group(0)
         return None
 
-    # Try Android (adb logcat) if adb is available
-    if _adb_path:
-        cmd = [_adb_path]
-        if device:
-            cmd.extend(["-s", device])
-        cmd.extend(["logcat", "-d"])
+    # Detect platform from server port (9226=iOS, 9225=Android) or device UDID
+    server_port = int(os.getenv("FLUTTER_CONTROL_PORT", "9225"))
+    is_ios_server = server_port == 9226
+    is_ios_udid = device and len(device) == 36 and device.count("-") == 4
+    is_ios = is_ios_server or is_ios_udid
 
+    # Try mDNS first (works on both iOS and Android, this is how Flutter does it)
+    # The VM service advertises via Bonjour with the auth code in TXT record
+    try:
+        # Step 1: Browse for _dartVmService._tcp services
+        # dns-sd runs continuously, so we read lines until we find what we need
+        process = await asyncio.create_subprocess_exec(
+            "dns-sd", "-B", "_dartVmService._tcp", "local.",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        service_name = None
         try:
+            # Read lines until we find a service or timeout
+            start_time = asyncio.get_event_loop().time()
+            while asyncio.get_event_loop().time() - start_time < 2:
+                try:
+                    line = await asyncio.wait_for(process.stdout.readline(), timeout=0.5)
+                    if line:
+                        decoded = line.decode()
+                        if "_dartVmService._tcp." in decoded and "Add" in decoded:
+                            parts = decoded.split()
+                            if len(parts) >= 7:
+                                service_name = parts[-1]
+                                break
+                except asyncio.TimeoutError:
+                    continue
+        finally:
+            process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=1)
+            except asyncio.TimeoutError:
+                process.kill()
+
+        if service_name:
+            trace.log("MDNS_FOUND", f"Service: {service_name}")
+
+            # Step 2: Lookup service details to get port and auth code
+            process = await asyncio.create_subprocess_exec(
+                "dns-sd", "-L", service_name, "_dartVmService._tcp", "local.",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            port = None
+            auth_code = None
+            try:
+                start_time = asyncio.get_event_loop().time()
+                while asyncio.get_event_loop().time() - start_time < 2:
+                    try:
+                        line = await asyncio.wait_for(process.stdout.readline(), timeout=0.5)
+                        if line:
+                            decoded = line.decode()
+                            # Port: "can be reached at hostname:PORT"
+                            port_match = re.search(r":(\d+)\s", decoded)
+                            if port_match:
+                                port = port_match.group(1)
+                            # Auth code: "authCode=XXXXX"
+                            auth_match = re.search(r"authCode=(\S+)", decoded)
+                            if auth_match:
+                                auth_code = auth_match.group(1)
+                            # Once we have both, we're done
+                            if port and auth_code:
+                                break
+                    except asyncio.TimeoutError:
+                        continue
+            finally:
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=1)
+                except asyncio.TimeoutError:
+                    process.kill()
+
+            if port and auth_code:
+                uri = f"http://127.0.0.1:{port}/{auth_code}/"
+                trace.log("DISCOVER_URI", f"mDNS: {uri}")
+                return uri
+            elif port:
+                uri = f"http://127.0.0.1:{port}/"
+                trace.log("DISCOVER_URI", f"mDNS (no auth): {uri}")
+                return uri
+
+        trace.log("MDNS_NOT_FOUND", "No Dart VM service advertised via mDNS")
+    except Exception as e:
+        trace.log("MDNS_ERR", str(e))
+
+    # Fallback for Android: try logcat
+    if not is_ios and _adb_path:
+        trace.log("DISCOVER_FALLBACK", "Trying Android logcat")
+        try:
+            cmd = [_adb_path]
+            if device:
+                cmd.extend(["-s", device])
+            cmd.extend(["logcat", "-d", "-t", "100", "*:I"])
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -160,33 +254,37 @@ async def _discover_vm_service_uri(trace: TraceContext, device: Optional[str] = 
             )
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
             output = stdout.decode("utf-8", errors="replace")
+
             uri = _extract_uri(output)
             if uri:
-                trace.log("DISCOVER_URI", f"Android: {uri}")
+                trace.log("DISCOVER_URI", f"logcat: {uri}")
                 return uri
+            trace.log("DISCOVER_LOGCAT_EMPTY", "No VM service URI in logcat")
         except Exception as e:
-            trace.log("DISCOVER_ADB_ERR", str(e))
+            trace.log("DISCOVER_LOGCAT_ERR", str(e))
 
-    # Try iOS (simctl log) if device looks like a UDID or on macOS
-    # iOS simulator UDIDs are in format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
-    is_ios_udid = device and len(device) == 36 and device.count("-") == 4
-    if is_ios_udid or not _adb_path:
+    # Last resort for iOS: port scan (finds port but not auth code)
+    if is_ios:
+        trace.log("DISCOVER_FALLBACK", "Trying iOS port scan")
         try:
-            # Use log show to get recent Flutter logs
-            cmd = ["log", "show", "--predicate", "process == 'Runner'", "--last", "5m", "--style", "compact"]
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
+            process = await asyncio.create_subprocess_shell(
+                "/usr/sbin/lsof -i -P -n | grep -E '^Runner.*LISTEN'",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=15)
-            output = stdout.decode("utf-8", errors="replace")
-            uri = _extract_uri(output)
-            if uri:
-                trace.log("DISCOVER_URI", f"iOS: {uri}")
-                return uri
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=5)
+            output = stdout.decode()
+
+            for line in output.split("\n"):
+                if "127.0.0.1:" in line:
+                    match = re.search(r"127\.0\.0\.1:(\d+)", line)
+                    if match:
+                        port = match.group(1)
+                        uri = f"http://127.0.0.1:{port}/"
+                        trace.log("DISCOVER_URI", f"port scan (no auth): {uri}")
+                        return uri
         except Exception as e:
-            trace.log("DISCOVER_IOS_ERR", str(e))
+            trace.log("DISCOVER_PORTSCAN_ERR", str(e))
 
     return None
 
@@ -292,12 +390,11 @@ async def _flutter_run(
     if not project.exists():
         return {"success": False, "error": f"Project not found: {project_path}"}
 
-    # Build command
+    # Build command (use new vm service port flags, not deprecated --observatory-port)
     cmd = [
         flutter_path,
         "run",
-        "--observatory-port", str(port),
-        "--enable-dart-profiling",
+        "--device-vmservice-port", str(port),
     ]
     if device:
         cmd.extend(["-d", device])
@@ -316,6 +413,7 @@ async def _flutter_run(
         )
 
         # Wait for Observatory to be ready (look for "Observatory" or "VM Service" in output)
+        import re as re_module
         start_time = asyncio.get_event_loop().time()
         output_lines = []
 
@@ -330,13 +428,17 @@ async def _flutter_run(
                     output_lines.append(decoded)
                     trace.log("FLUTTER_OUT", decoded)
 
-                    # Check for Observatory URL
-                    if "observatory" in decoded.lower() or "vm service" in decoded.lower():
-                        if f":{port}" in decoded or "localhost" in decoded:
-                            trace.log("FLUTTER_READY", f"Observatory on port {port}")
+                    # Check for Observatory URL (extract full URI with auth token)
+                    if "vm service" in decoded.lower() or "observatory" in decoded.lower():
+                        # Extract full URI: http://127.0.0.1:PORT/AUTH_TOKEN=/
+                        uri_match = re_module.search(r"http://[^\s]+", decoded)
+                        if uri_match:
+                            observatory_uri = uri_match.group(0)
+                            trace.log("FLUTTER_READY", f"Observatory at {observatory_uri}")
                             return {
                                 "success": True,
-                                "message": f"App running with Observatory on port {port}",
+                                "message": f"App running with Observatory",
+                                "uri": observatory_uri,
                                 "port": port,
                                 "pid": process.pid,
                             }
@@ -971,11 +1073,15 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         return {"success": True, "message": "Disconnected"}
 
     elif name == "flutter_driver_discover":
+        import os as os_module
         device_id = arguments.get("device")
         host_port = arguments.get("host_port", 9223)
 
-        # Detect if this is an iOS simulator (UDID format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)
-        is_ios = device_id and len(device_id) == 36 and device_id.count("-") == 4
+        # Detect iOS: server port 9226 or device ID is a UDID
+        server_port = int(os_module.environ.get("FLUTTER_CONTROL_PORT", "9225"))
+        is_ios_server = server_port == 9226
+        is_ios_udid = device_id and len(device_id) == 36 and device_id.count("-") == 4
+        is_ios = is_ios_server or is_ios_udid
 
         # Discover VM service URI from device logs
         uri = await _discover_vm_service_uri(trace, device_id)

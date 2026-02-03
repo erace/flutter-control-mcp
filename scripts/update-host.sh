@@ -11,6 +11,13 @@ LOG_DIR="$HOME/Library/Logs/flutter-control"
 
 echo "=== Updating Flutter Control (Phase 6) ==="
 
+# Ensure install directory exists (needs sudo if not present)
+if [ ! -d "$INSTALL_DIR" ]; then
+    echo "Creating $INSTALL_DIR (requires sudo)..."
+    sudo mkdir -p "$INSTALL_DIR"
+    sudo chown -R "$(whoami)" "$INSTALL_DIR"
+fi
+
 # Clean up old directory structure (from previous installations)
 echo "Cleaning up old files..."
 rm -rf "$INSTALL_DIR/logging" "$INSTALL_DIR/maestro" "$INSTALL_DIR/mcp" \

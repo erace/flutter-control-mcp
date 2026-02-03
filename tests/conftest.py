@@ -34,10 +34,14 @@ def pytest_configure(config):
 
 def _validate_environment():
     """Check for potentially stale environment variables and set defaults."""
+    # Only validate Android env vars when running Android tests
+    if os.getenv("TEST_PLATFORM") != "android":
+        return
+
     warnings = []
 
     # Auto-configure ADB_SERVER_SOCKET for Android tests via proxy
-    if os.getenv("TEST_PLATFORM") == "android" and not os.getenv("ADB_SERVER_SOCKET"):
+    if not os.getenv("ADB_SERVER_SOCKET"):
         bridge_host = os.getenv("ANDROID_MCP_BRIDGE_HOST", "phost.local")
         os.environ["ADB_SERVER_SOCKET"] = f"tcp:{bridge_host}:15037"
 
@@ -89,10 +93,10 @@ def platform_config() -> PlatformConfig:
 def bootstrap_result(platform_config: PlatformConfig) -> BootstrapResult:
     """Bootstrap test environment before any tests run.
 
-    - Starts emulator/simulator if not running
-    - Reinstalls test app (fresh install)
-    - Launches test app
-    - Connects to Flutter Driver Observatory
+    Uses MCP tools to:
+    - Start emulator/simulator if not running
+    - Launch app with flutter_run (enables Driver/Observatory)
+    - Connect to Flutter Driver
     """
     token_file = Path.home() / ".android-mcp-token"
     token = token_file.read_text().strip() if token_file.exists() else ""
@@ -123,7 +127,6 @@ def bootstrap_result(platform_config: PlatformConfig) -> BootstrapResult:
 
     print(f"\n✓ Bootstrap complete: {result.platform}")
     print(f"  Device: {result.device_id}")
-    print(f"  App installed: {result.app_installed}")
     print(f"  App launched: {result.app_launched}")
     print(f"  Driver connected: {result.driver_connected}")
     if result.driver_uri:
