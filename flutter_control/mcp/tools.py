@@ -373,6 +373,66 @@ async def _adb_screenshot(trace: TraceContext, device: Optional[str] = None) -> 
         return {"success": False, "error": str(e)}
 
 
+async def _simctl_screenshot(trace: TraceContext, device: Optional[str] = None) -> Dict[str, Any]:
+    """Take screenshot using xcrun simctl (iOS simulator)."""
+    import tempfile
+    import os
+
+    # Use booted device if not specified
+    device_arg = device or "booted"
+
+    # Create temp file for screenshot
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        temp_path = f.name
+
+    try:
+        cmd = ["xcrun", "simctl", "io", device_arg, "screenshot", temp_path]
+        trace.log("SIMCTL_CMD", " ".join(cmd))
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+
+        if process.returncode != 0:
+            error = stderr.decode("utf-8", errors="replace")
+            trace.log("SIMCTL_ERR", error)
+            return {"success": False, "error": f"simctl failed: {error}"}
+
+        # Read the screenshot file
+        with open(temp_path, "rb") as f:
+            image_data = f.read()
+
+        if len(image_data) < 100:
+            trace.log("SIMCTL_ERR", "Empty or invalid screenshot")
+            return {"success": False, "error": "Empty screenshot"}
+
+        image_b64 = base64.b64encode(image_data).decode("utf-8")
+        trace.log("SIMCTL_OK", f"{len(image_data)} bytes")
+
+        return {
+            "success": True,
+            "error": None,
+            "image": image_b64,
+            "format": "png",
+            "encoding": "base64",
+        }
+    except asyncio.TimeoutError:
+        trace.log("SIMCTL_ERR", "Timeout")
+        return {"success": False, "error": "simctl timeout"}
+    except Exception as e:
+        trace.log("SIMCTL_ERR", str(e))
+        return {"success": False, "error": str(e)}
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+
+
 async def _flutter_run(
     project_path: str,
     port: int,
@@ -766,22 +826,22 @@ TOOLS = [
     },
     {
         "name": "flutter_screenshot",
-        "description": "Take a screenshot of the current screen (uses Maestro).",
+        "description": "Take a screenshot. Auto-selects fastest method: ADB (Android) or simctl (iOS). Falls back to Maestro on error.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "device": {"type": "string", "description": "Device ID (default: first device)"},
+            },
+        },
+    },
+    {
+        "name": "flutter_screenshot_maestro",
+        "description": "Take a screenshot using Maestro (slower but works when native methods fail).",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "timeout": {"type": "integer"},
                 "device": {"type": "string"},
-            },
-        },
-    },
-    {
-        "name": "flutter_screenshot_adb",
-        "description": "Take a screenshot using ADB (faster, no Maestro overhead).",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "device": {"type": "string", "description": "Device ID (default: first device)"},
             },
         },
     },
@@ -1028,16 +1088,44 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         return response
 
     elif name == "flutter_screenshot":
+        # Smart screenshot: detect platform, use native method, fallback to Maestro
+        import os as os_mod
+        server_port = int(os_mod.environ.get("FLUTTER_CONTROL_PORT", "9225"))
+        is_ios = server_port == 9226
+
+        if is_ios:
+            # Try simctl first
+            result = await _simctl_screenshot(trace, device)
+            if result.get("success"):
+                result["method"] = "simctl"
+                return result
+            trace.log("SCREENSHOT_FALLBACK", f"simctl failed: {result.get('error')}, trying Maestro")
+        else:
+            # Try ADB first
+            result = await _adb_screenshot(trace, device)
+            if result.get("success"):
+                result["method"] = "adb"
+                return result
+            trace.log("SCREENSHOT_FALLBACK", f"ADB failed: {result.get('error')}, trying Maestro")
+
+        # Fallback to Maestro
+        maestro_result = await _maestro.screenshot(trace, timeout, device)
+        response = {"success": maestro_result.success, "error": maestro_result.error_message, "method": "maestro"}
+        if maestro_result.screenshot_base64:
+            response["image"] = maestro_result.screenshot_base64
+            response["format"] = "png"
+            response["encoding"] = "base64"
+        return response
+
+    elif name == "flutter_screenshot_maestro":
+        # Explicit Maestro screenshot
         result = await _maestro.screenshot(trace, timeout, device)
-        response = {"success": result.success, "error": result.error_message}
+        response = {"success": result.success, "error": result.error_message, "method": "maestro"}
         if result.screenshot_base64:
             response["image"] = result.screenshot_base64
             response["format"] = "png"
             response["encoding"] = "base64"
         return response
-
-    elif name == "flutter_screenshot_adb":
-        return await _adb_screenshot(trace, device)
 
     elif name == "flutter_debug_traces":
         traces = get_recent_traces(arguments.get("count", 5))
