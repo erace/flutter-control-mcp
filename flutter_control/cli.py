@@ -194,8 +194,16 @@ def mcp_stdio():
         FLUTTER_CONTROL_TOKEN: Auth token (or reads from ~/.android-mcp-token)
     """
     import json
+    import signal
     import urllib.request
     import urllib.error
+
+    # Handle shutdown signals gracefully
+    def handle_shutdown(signum, frame):
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    signal.signal(signal.SIGINT, handle_shutdown)
 
     host = os.environ.get("FLUTTER_CONTROL_HOST", "phost.local")
     port = os.environ.get("FLUTTER_CONTROL_PORT", "9225")
@@ -213,50 +221,58 @@ def mcp_stdio():
         headers["Authorization"] = f"Bearer {token}"
 
     def send_response(response):
-        print(json.dumps(response), flush=True)
-
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-
         try:
-            request = json.loads(line)
-        except json.JSONDecodeError as e:
-            send_response({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {e}"}})
-            continue
+            print(json.dumps(response), flush=True)
+        except BrokenPipeError:
+            # Client closed connection, exit gracefully
+            sys.exit(0)
 
-        request_id = request.get("id")
+    try:
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
 
-        try:
-            data = json.dumps(request).encode("utf-8")
-            req = urllib.request.Request(
-                f"{base_url}/mcp",
-                data=data,
-                headers=headers,
-                method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                send_response(result)
-        except urllib.error.HTTPError as e:
-            send_response({
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {"code": -32000, "message": f"HTTP {e.code}: {e.reason}"}
-            })
-        except urllib.error.URLError as e:
-            send_response({
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {"code": -32000, "message": f"Connection error: {e.reason}"}
-            })
-        except Exception as e:
-            send_response({
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {"code": -32000, "message": str(e)}
-            })
+            try:
+                request = json.loads(line)
+            except json.JSONDecodeError as e:
+                send_response({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {e}"}})
+                continue
+
+            request_id = request.get("id")
+
+            try:
+                data = json.dumps(request).encode("utf-8")
+                req = urllib.request.Request(
+                    f"{base_url}/mcp",
+                    data=data,
+                    headers=headers,
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+                    send_response(result)
+            except urllib.error.HTTPError as e:
+                send_response({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {"code": -32000, "message": f"HTTP {e.code}: {e.reason}"}
+                })
+            except urllib.error.URLError as e:
+                send_response({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {"code": -32000, "message": f"Connection error: {e.reason}"}
+                })
+            except Exception as e:
+                send_response({
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {"code": -32000, "message": str(e)}
+                })
+    except (EOFError, KeyboardInterrupt):
+        # stdin closed or Ctrl+C, exit gracefully
+        pass
 
 
 def main():
