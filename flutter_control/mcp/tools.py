@@ -1044,24 +1044,14 @@ TOOLS = [
         },
     },
     {
-        "name": "flutter_debug_traces",
-        "description": "Get recent trace logs for debugging.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "count": {"type": "integer", "description": "Number of traces (default: 5)"},
-            },
-        },
-    },
-    {
         "name": "flutter_debug_trace",
-        "description": "Get a specific trace by ID.",
+        "description": "Get trace logs for debugging. If trace_id provided, returns that trace. Otherwise returns recent traces.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "trace_id": {"type": "string"},
+                "trace_id": {"type": "string", "description": "Specific trace ID to retrieve"},
+                "count": {"type": "integer", "description": "Number of recent traces to return (default: 5, ignored if trace_id provided)"},
             },
-            "required": ["trace_id"],
         },
     },
     # Phase 2: Flutter Driver tools
@@ -1356,15 +1346,19 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
             response["encoding"] = "base64"
         return response
 
-    elif name == "flutter_debug_traces":
-        traces = get_recent_traces(arguments.get("count", 5))
-        return {"success": True, "traces": traces}
-
     elif name == "flutter_debug_trace":
-        trace_data = get_trace(arguments["trace_id"])
-        if trace_data:
-            return {"success": True, "trace": trace_data}
-        return {"success": False, "error": f"Trace not found: {arguments['trace_id']}"}
+        trace_id = arguments.get("trace_id")
+        if trace_id:
+            # Get specific trace
+            trace_data = get_trace(trace_id)
+            if trace_data:
+                return {"success": True, "trace": trace_data}
+            return {"success": False, "error": f"Trace not found: {trace_id}"}
+        else:
+            # Get recent traces
+            count = arguments.get("count", 5)
+            traces = get_recent_traces(count)
+            return {"success": True, "traces": traces}
 
     # Phase 2: Flutter Driver tools
     elif name == "flutter_driver_connect":
