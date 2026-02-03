@@ -250,8 +250,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Run tests
-TEST_PLATFORM=ios IOS_MCP_PORT=9226 pytest tests/ -v
+# Run tests (defaults use mDNS hostnames)
+TEST_PLATFORM=ios pytest tests/ -v      # iOS
+TEST_PLATFORM=android pytest tests/ -v  # Android
+
+# Custom host (e.g., remote server)
+ANDROID_HOST=farm-01.local TEST_PLATFORM=android pytest tests/ -v
 
 # Serve for host updates
 python3 -m http.server 9999

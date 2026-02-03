@@ -40,33 +40,33 @@ def _validate_environment():
 
     warnings = []
 
+    # Get the canonical ANDROID_HOST
+    android_host = os.getenv("ANDROID_HOST", "phost.local")
+
     # Auto-configure ADB_SERVER_SOCKET for Android tests via proxy
     if not os.getenv("ADB_SERVER_SOCKET"):
-        bridge_host = os.getenv("ANDROID_MCP_BRIDGE_HOST", "phost.local")
-        os.environ["ADB_SERVER_SOCKET"] = f"tcp:{bridge_host}:15037"
+        os.environ["ADB_SERVER_SOCKET"] = f"tcp:{android_host}:15037"
 
-    # Check ANDROID_MCP_HOST
-    host = os.getenv("ANDROID_MCP_HOST", "")
-    if host and "192.168" in host:
-        warnings.append(
-            f"ANDROID_MCP_HOST={host} looks like a hardcoded IP.\n"
-            f"         Consider using: ANDROID_MCP_HOST=phost.local"
-        )
+    # Check for deprecated/legacy env vars that should be migrated
+    legacy_vars = {
+        "ANDROID_MCP_HOST": "ANDROID_HOST",
+        "ANDROID_MCP_PORT": "FLUTTER_CONTROL_PORT",
+        "ANDROID_MCP_BRIDGE_HOST": "ANDROID_HOST (single host for all services)",
+        "ANDROID_MCP_BRIDGE_PORT": "BRIDGE_PORT",
+    }
 
-    # Check ANDROID_MCP_PORT (common mistake: using bridge port 9222 instead of 9225)
-    port = os.getenv("ANDROID_MCP_PORT", "")
-    if port == "9222":
-        warnings.append(
-            f"ANDROID_MCP_PORT=9222 is the android-mcp-bridge port.\n"
-            f"         Flutter Control uses port 9225: ANDROID_MCP_PORT=9225"
-        )
+    for old_var, new_var in legacy_vars.items():
+        if os.getenv(old_var):
+            warnings.append(
+                f"{old_var} is deprecated.\n"
+                f"         Use: {new_var}"
+            )
 
-    # Check ANDROID_MCP_BRIDGE_HOST
-    bridge_host = os.getenv("ANDROID_MCP_BRIDGE_HOST", "")
-    if bridge_host and "192.168" in bridge_host:
+    # Check ANDROID_HOST for hardcoded IP
+    if android_host and "192.168" in android_host:
         warnings.append(
-            f"ANDROID_MCP_BRIDGE_HOST={bridge_host} looks like a hardcoded IP.\n"
-            f"         Consider using: ANDROID_MCP_BRIDGE_HOST=phost.local"
+            f"ANDROID_HOST={android_host} looks like a hardcoded IP.\n"
+            f"         Consider using: ANDROID_HOST=phost.local (mDNS)"
         )
 
     if warnings:
@@ -76,7 +76,8 @@ def _validate_environment():
         for w in warnings:
             print(f"  • {w}")
         print("=" * 60)
-        print("Fix: Update ~/.zshrc or pass correct values explicitly")
+        print("Fix: Remove old vars from ~/.zshrc, use new config:")
+        print("  export ANDROID_HOST=phost.local  # (or omit for default)")
         print("=" * 60 + "\n")
 
 
@@ -104,19 +105,20 @@ def bootstrap_result(platform_config: PlatformConfig) -> BootstrapResult:
     loop = asyncio.new_event_loop()
     try:
         if platform_config.is_android:
+            # Use config from PlatformConfig (derived from ANDROID_HOST)
             bootstrap = AndroidBootstrap(
-                mcp_bridge_host=os.getenv("ANDROID_MCP_BRIDGE_HOST", "phost.local"),
-                mcp_bridge_port=int(os.getenv("ANDROID_MCP_BRIDGE_PORT", "9222")),
+                mcp_bridge_host=platform_config.bridge_host,
+                mcp_bridge_port=platform_config.bridge_port,
                 token=token,
-                flutter_control_host=os.getenv("ANDROID_MCP_HOST", "phost.local"),
-                flutter_control_port=int(os.getenv("ANDROID_MCP_PORT", "9225")),
+                flutter_control_host=platform_config.mcp_host,
+                flutter_control_port=platform_config.mcp_port,
             )
         else:
             bootstrap = IOSBootstrap(
-                mcp_host=os.getenv("IOS_MCP_HOST", "localhost"),
-                mcp_port=int(os.getenv("IOS_MCP_PORT", "9226")),
+                mcp_host=platform_config.mcp_host,
+                mcp_port=platform_config.mcp_port,
                 token=token,
-                device_name=os.getenv("IOS_SIMULATOR_NAME", "iPhone 16e"),
+                device_name=os.getenv("IOS_DEVICE_NAME", "iPhone 16e"),
             )
         result = loop.run_until_complete(bootstrap.bootstrap())
     finally:

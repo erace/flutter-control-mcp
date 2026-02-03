@@ -220,11 +220,11 @@ VM:9223 (relay) → Host:9233 (bridge) → Host:9223 (ADB fwd) → Emulator
 |-------|-----|
 | Element not found | Uses partial matching (regex `.*text.*`), check text substring |
 | Maestro not installed | `curl -Ls 'https://get.maestro.mobile.dev' \| bash` |
-| Screenshot slow | Maestro ~15s; use `flutter_screenshot_adb` (220ms) |
+| Screenshot slow | Use `flutter_screenshot` (auto-selects fast method: simctl/adb ~200ms) |
 | Driver 403 Forbidden | Auth token missing from URI - use `flutter_driver_discover` |
 | Too many elements (Driver) | Type finder `{type: "..."}` matched multiple widgets; use unique type or key finder |
-| Tests fail "Tool not found" | Stale env vars - check `echo $ANDROID_MCP_HOST` (should be `phost.local`, not an IP) |
-| Wrong port (9222 vs 9225) | 9222 = android-mcp-bridge, 9225 = flutter-control. Check `$ANDROID_MCP_PORT` |
+| Deprecated env var warning | Remove old vars from ~/.zshrc, use `ANDROID_HOST=phost.local` only |
+| Can't connect to host | Check mDNS: `ping phost.local`. If fails, check Bonjour/network |
 
 ## Network Configuration
 
@@ -273,27 +273,41 @@ Bootstrap automatically:
 - Installs and launches test app
 - Connects to Flutter Driver Observatory
 
+### Configuration
+
+Single `ANDROID_HOST` env var controls all Android services (defaults to `phost.local`):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANDROID_HOST` | `phost.local` | Host Mac (mDNS) - used for all Android services |
+| `FLUTTER_CONTROL_PORT` | `9225` | Flutter Control MCP port |
+| `BRIDGE_PORT` | `9222` | Android MCP Bridge port |
+| `IOS_HOST` | `localhost` | iOS MCP host (runs in VM) |
+| `IOS_PORT` | `9226` | iOS MCP port |
+
+ADB_SERVER_SOCKET is auto-configured from ANDROID_HOST.
+
+### Running Tests
+
 ```bash
 source .venv/bin/activate
-export PATH="$PATH:/Users/admin/Library/Android/sdk/platform-tools"
 
-# Run Android tests (FROM VM - uses ADB proxy on host)
-TEST_PLATFORM=android ANDROID_MCP_HOST=phost.local ANDROID_MCP_PORT=9225 \
-  ANDROID_MCP_BRIDGE_HOST=phost.local ANDROID_MCP_BRIDGE_PORT=9222 \
-  ADB_SERVER_SOCKET=tcp:phost.local:15037 \
-  pytest tests/ -v
+# Android tests (uses defaults - phost.local)
+TEST_PLATFORM=android pytest tests/ -v
 
-# Run iOS tests
-TEST_PLATFORM=ios IOS_MCP_PORT=9226 \
-  pytest tests/ -v
+# iOS tests
+TEST_PLATFORM=ios pytest tests/ -v
 
-# Run single test
+# Single test
 pytest tests/test_tap.py::TestTapByText -v
 
-# Run by marker
+# By marker
 pytest tests/ -m "maestro_only" -v
 pytest tests/ -m "driver_only" -v
 pytest tests/ -m "slow" -v
+
+# Custom host (e.g., remote server farm)
+ANDROID_HOST=farm-server-01.local TEST_PLATFORM=android pytest tests/ -v
 ```
 
 **Markers:** `slow`, `driver_only`, `maestro_only`, `android_only`, `ios_only`

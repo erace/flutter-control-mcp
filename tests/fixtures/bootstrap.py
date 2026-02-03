@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +13,39 @@ import httpx
 
 # Config
 TEST_APP_DIR = Path(__file__).parent.parent.parent / "test_app"
+
+# Common Android SDK locations
+ANDROID_SDK_PATHS = [
+    Path.home() / "Library" / "Android" / "sdk" / "platform-tools" / "adb",
+    Path("/usr/local/android-sdk/platform-tools/adb"),
+    Path("/opt/android-sdk/platform-tools/adb"),
+]
+
+
+def find_adb() -> str:
+    """Find adb binary - checks PATH first, then common locations."""
+    # First check PATH
+    adb_path = shutil.which("adb")
+    if adb_path:
+        return adb_path
+
+    # Check common SDK locations
+    for path in ANDROID_SDK_PATHS:
+        if path.exists():
+            return str(path)
+
+    # Last resort: assume it's in PATH and let subprocess fail with clear error
+    return "adb"
+
+
+def get_adb_env() -> dict:
+    """Get environment for ADB subprocess with ADB_SERVER_SOCKET set."""
+    env = os.environ.copy()
+    # Ensure ADB_SERVER_SOCKET is set for remote ADB access
+    if "ADB_SERVER_SOCKET" not in env:
+        android_host = os.getenv("ANDROID_HOST", "phost.local")
+        env["ADB_SERVER_SOCKET"] = f"tcp:{android_host}:15037"
+    return env
 TEST_APP_PACKAGE = "com.example.flutter_control_test_app"
 TEST_APP_BUNDLE_ID = "com.example.flutterControlTestApp"
 TEST_APP_APK = TEST_APP_DIR / "build" / "app" / "outputs" / "flutter-apk" / "app-debug.apk"
@@ -79,12 +113,11 @@ class MCPBootstrap:
             result = await self._call_bridge("android_list_devices")
             output = result.get("result", "")
             if "emulator-" in output and "device" in output:
-                # Extract device ID
-                for line in output.split("\n"):
-                    if "emulator-" in line:
-                        parts = line.split()
-                        if parts:
-                            return parts[0]
+                # Extract device ID from format: "  - emulator-5554: sdk_gphone64_arm64 (device)"
+                import re
+                match = re.search(r'(emulator-\d+)', output)
+                if match:
+                    return match.group(1)
 
             # Start emulator
             avd_name = os.getenv("ANDROID_AVD_NAME", "Pixel_7_API_35")
@@ -124,11 +157,14 @@ class MCPBootstrap:
                 print(f"  ⚠ APK not found at {TEST_APP_APK}")
                 print(f"  Build it with: cd test_app && flutter build apk --debug")
                 return False
-            # Use adb install (ADB_SERVER_SOCKET should be set for remote access)
+            # Use adb install with proper env for remote ADB access
+            adb = find_adb()
+            env = get_adb_env()
             proc = await asyncio.create_subprocess_exec(
-                "adb", "-s", device_id, "install", "-r", str(TEST_APP_APK),
+                adb, "-s", device_id, "install", "-r", str(TEST_APP_APK),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
             stdout, stderr = await proc.communicate()
             if proc.returncode != 0:
@@ -153,11 +189,14 @@ class MCPBootstrap:
     async def launch_app(self, device_id: str) -> bool:
         """Launch the app on device."""
         if self.platform == "android":
+            adb = find_adb()
+            env = get_adb_env()
             proc = await asyncio.create_subprocess_exec(
-                "adb", "-s", device_id, "shell", "am", "start",
+                adb, "-s", device_id, "shell", "am", "start",
                 "-n", f"{TEST_APP_PACKAGE}/.MainActivity",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=env,
             )
             await proc.communicate()
             return proc.returncode == 0
