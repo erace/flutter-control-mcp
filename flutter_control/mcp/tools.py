@@ -1055,13 +1055,13 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         return await _flutter_run(project_path, port, device_arg, flavor, trace, timeout)
 
     elif name == "flutter_version":
-        # Import version info from server module
+        # Import version info from package
         import os
         import platform
         from datetime import datetime
         from pathlib import Path
+        from .. import __version__
 
-        start_time = datetime.utcnow()  # Approximate
         port = int(os.environ.get("FLUTTER_CONTROL_PORT", 9225))
         plat = "ios" if port == 9226 else "android"
 
@@ -1093,7 +1093,7 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
             "success": True,
             "service": "flutter-control",
             "platform": plat,
-            "version": "1.0.0",
+            "version": __version__,
             "deployed_at": deployed_at,
             "git_commit": git_commit,
             "hostname": platform.node(),
