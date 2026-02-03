@@ -50,7 +50,7 @@ Since the package isn't on PyPI yet, use `uvx --from git+...`:
   "mcpServers": {
     "flutter-control-android": {
       "command": "/Users/admin/.local/bin/uvx",
-      "args": ["--from", "git+https://github.com/erace/flutter-control-mcp.git", "flutter-control-mcp"],
+      "args": ["--quiet", "--from", "git+https://github.com/erace/flutter-control-mcp.git", "flutter-control-mcp"],
       "env": {
         "FLUTTER_CONTROL_HOST": "phost.local",
         "FLUTTER_CONTROL_PORT": "9225"
@@ -58,7 +58,7 @@ Since the package isn't on PyPI yet, use `uvx --from git+...`:
     },
     "flutter-control-ios": {
       "command": "/Users/admin/.local/bin/uvx",
-      "args": ["--from", "git+https://github.com/erace/flutter-control-mcp.git", "flutter-control-mcp"],
+      "args": ["--quiet", "--from", "git+https://github.com/erace/flutter-control-mcp.git", "flutter-control-mcp"],
       "env": {
         "FLUTTER_CONTROL_HOST": "localhost",
         "FLUTTER_CONTROL_PORT": "9226"
@@ -68,7 +68,7 @@ Since the package isn't on PyPI yet, use `uvx --from git+...`:
       "command": "python3",
       "args": ["/path/to/android-mcp-bridge/android-mcp-stdio.py"],
       "env": {
-        "ANDROID_MCP_URL": "http://phost.local:9222"
+        "ANDROID_MCP_URL": "http://phost.local:9222/mcp"
       }
     }
   }
