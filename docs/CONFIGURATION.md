@@ -43,20 +43,22 @@
 
 ### Claude Code (`~/.claude/mcp_servers.json`)
 
+Since the package isn't on PyPI yet, use `uvx --from git+...`:
+
 ```json
 {
   "mcpServers": {
     "flutter-control-android": {
-      "command": "uvx",
-      "args": ["flutter-control-mcp"],
+      "command": "/Users/admin/.local/bin/uvx",
+      "args": ["--from", "git+https://github.com/erace/flutter-control-mcp.git", "flutter-control-mcp"],
       "env": {
         "FLUTTER_CONTROL_HOST": "phost.local",
         "FLUTTER_CONTROL_PORT": "9225"
       }
     },
     "flutter-control-ios": {
-      "command": "uvx",
-      "args": ["flutter-control-mcp"],
+      "command": "/Users/admin/.local/bin/uvx",
+      "args": ["--from", "git+https://github.com/erace/flutter-control-mcp.git", "flutter-control-mcp"],
       "env": {
         "FLUTTER_CONTROL_HOST": "localhost",
         "FLUTTER_CONTROL_PORT": "9226"
@@ -73,13 +75,14 @@
 }
 ```
 
-### Alternative: pip-installed stdio server
+### When published to PyPI (future)
 
 ```json
 {
   "mcpServers": {
     "flutter-control": {
-      "command": "flutter-control-mcp",
+      "command": "uvx",
+      "args": ["flutter-control-mcp"],
       "env": {
         "FLUTTER_CONTROL_HOST": "phost.local"
       }

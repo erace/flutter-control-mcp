@@ -33,11 +33,14 @@ curl -Ls "https://get.maestro.mobile.dev" | bash
 The simplest way to use Flutter Control is with uvx - no installation needed:
 
 ```bash
-# Run directly
-uvx flutter-control-mcp
+# Run directly (from GitHub, not on PyPI yet)
+uvx --from git+https://github.com/erace/flutter-control-mcp.git flutter-control-mcp
 
-# Or with specific server
-FLUTTER_CONTROL_HOST=phost.local uvx flutter-control-mcp
+# With specific server
+FLUTTER_CONTROL_HOST=phost.local uvx --from git+https://github.com/erace/flutter-control-mcp.git flutter-control-mcp
+
+# When published to PyPI (future):
+# uvx flutter-control-mcp
 ```
 
 ## Full Installation
