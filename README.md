@@ -29,36 +29,64 @@ The server auto-selects the right backend based on your finder type.
 
 ## Installation
 
-### Host Mac (Android)
+### Quick Start (uvx - recommended)
 
 ```bash
-# First time: create venv and install
-python3 -m venv ~/.flutter-control-venv
-~/.flutter-control-venv/bin/pip install git+https://github.com/erace/flutter-control-mcp.git
-~/.flutter-control-venv/bin/flutter-control-install
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Updates (from VM with HTTP server running)
-curl -sS http://claude-dev.local:9999/update.sh | bash
+# Run directly with uvx (no install needed)
+uvx flutter-control-mcp
 ```
 
-### VM (iOS)
+### MCP Client Configuration
+
+Add to `~/.claude/mcp_servers.json`:
+
+```json
+{
+  "mcpServers": {
+    "flutter-control-android": {
+      "command": "uvx",
+      "args": ["flutter-control-mcp"],
+      "env": {
+        "FLUTTER_CONTROL_HOST": "phost.local",
+        "FLUTTER_CONTROL_PORT": "9225"
+      }
+    },
+    "flutter-control-ios": {
+      "command": "uvx",
+      "args": ["flutter-control-mcp"],
+      "env": {
+        "FLUTTER_CONTROL_HOST": "localhost",
+        "FLUTTER_CONTROL_PORT": "9226"
+      }
+    }
+  }
+}
+```
+
+### HTTP Server Installation
+
+The MCP stdio client connects to an HTTP server that must be running:
 
 ```bash
-# Clone and install
-git clone https://github.com/erace/flutter-control-mcp.git
-cd flutter-control-mcp
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+# Install via pip
+pip install git+https://github.com/erace/flutter-control-mcp.git
 
-# Run server
-FLUTTER_CONTROL_PORT=9226 python -m flutter_control.mcp.server
+# Install as macOS service (auto-starts on boot)
+flutter-control-install --port 9225  # Android (host Mac)
+flutter-control-install --port 9226  # iOS (VM)
+
+# Or run directly for development
+flutter-control-server
 ```
 
 ### Requirements
 
 - Python 3.11+
 - macOS
+- [uv](https://github.com/astral-sh/uv): `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - [Maestro](https://maestro.mobile.dev/): `curl -Ls "https://get.maestro.mobile.dev" | bash`
 - Android SDK (for Android)
 - Xcode (for iOS)

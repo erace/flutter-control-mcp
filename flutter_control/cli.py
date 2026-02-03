@@ -182,6 +182,83 @@ def show_version():
     print(f"flutter-control-mcp {__version__}")
 
 
+def mcp_stdio():
+    """MCP stdio server - for use with uvx/npx.
+
+    This is the main entry point for MCP clients like Claude Code.
+    Reads JSON-RPC requests from stdin, proxies to HTTP server, returns responses.
+
+    Environment variables:
+        FLUTTER_CONTROL_HOST: Server host (default: phost.local for Android, localhost for iOS)
+        FLUTTER_CONTROL_PORT: Server port (default: 9225)
+        FLUTTER_CONTROL_TOKEN: Auth token (or reads from ~/.android-mcp-token)
+    """
+    import json
+    import urllib.request
+    import urllib.error
+
+    host = os.environ.get("FLUTTER_CONTROL_HOST", "phost.local")
+    port = os.environ.get("FLUTTER_CONTROL_PORT", "9225")
+    base_url = f"http://{host}:{port}"
+
+    # Get token
+    token = os.environ.get("FLUTTER_CONTROL_TOKEN")
+    if not token:
+        token_file = Path.home() / ".android-mcp-token"
+        if token_file.exists():
+            token = token_file.read_text().strip()
+
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    def send_response(response):
+        print(json.dumps(response), flush=True)
+
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            request = json.loads(line)
+        except json.JSONDecodeError as e:
+            send_response({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": f"Parse error: {e}"}})
+            continue
+
+        request_id = request.get("id")
+
+        try:
+            data = json.dumps(request).encode("utf-8")
+            req = urllib.request.Request(
+                f"{base_url}/mcp",
+                data=data,
+                headers=headers,
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                result = json.loads(resp.read().decode("utf-8"))
+                send_response(result)
+        except urllib.error.HTTPError as e:
+            send_response({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32000, "message": f"HTTP {e.code}: {e.reason}"}
+            })
+        except urllib.error.URLError as e:
+            send_response({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32000, "message": f"Connection error: {e.reason}"}
+            })
+        except Exception as e:
+            send_response({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {"code": -32000, "message": str(e)}
+            })
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -189,19 +266,27 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Commands:
+  flutter-control-mcp        Run MCP stdio server (for uvx/Claude Code)
   flutter-control-install    Install as macOS LaunchAgent service
   flutter-control-uninstall  Uninstall the service
-  flutter-control-server     Run server directly (development)
+  flutter-control-server     Run HTTP server directly (development)
 
 Examples:
-  # Install on default port 9225
-  flutter-control-install
+  # Use with uvx (standard MCP pattern)
+  uvx flutter-control-mcp
 
-  # Install on custom port
-  flutter-control-install --port 9226
+  # Install HTTP server as macOS service
+  flutter-control-install --port 9225
 
-  # Uninstall
-  flutter-control-install --uninstall
+  # Configure MCP client (Claude Code)
+  # Add to ~/.claude/mcp_servers.json:
+  # {
+  #   "flutter-control": {
+  #     "command": "uvx",
+  #     "args": ["flutter-control-mcp"],
+  #     "env": {"FLUTTER_CONTROL_HOST": "phost.local"}
+  #   }
+  # }
 """
     )
     parser.add_argument("--version", action="store_true", help="Show version")

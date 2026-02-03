@@ -36,6 +36,7 @@ dev = [
 
 [project.scripts]
 flutter-control = "flutter_control.cli:main"
+flutter-control-mcp = "flutter_control.cli:mcp_stdio"
 flutter-control-install = "flutter_control.cli:install_service"
 flutter-control-uninstall = "flutter_control.cli:uninstall_service"
 flutter-control-server = "flutter_control.cli:run_server"
