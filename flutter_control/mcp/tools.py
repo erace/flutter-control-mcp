@@ -717,6 +717,204 @@ async def _ios_shutdown_simulator(trace: TraceContext, udid: Optional[str] = Non
         return {"success": False, "error": str(e)}
 
 
+async def _android_list_devices(trace: TraceContext) -> Dict[str, Any]:
+    """List Android devices and AVDs using adb and emulator commands."""
+    if not _adb_path:
+        return {"success": False, "error": "ADB not found"}
+
+    try:
+        # Get connected devices
+        process = await asyncio.create_subprocess_exec(
+            _adb_path, "devices", "-l",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+
+        if process.returncode != 0:
+            error = stderr.decode("utf-8", errors="replace")
+            trace.log("ADB_ERR", error)
+            return {"success": False, "error": f"adb devices failed: {error}"}
+
+        output = stdout.decode("utf-8")
+        lines = output.strip().split("\n")[1:]  # Skip header
+
+        devices = []
+        for line in lines:
+            if line.strip():
+                parts = line.split()
+                if len(parts) >= 2:
+                    device_id = parts[0]
+                    state = parts[1]
+                    # Extract model from "model:Pixel_7" if present
+                    model = None
+                    for part in parts[2:]:
+                        if part.startswith("model:"):
+                            model = part.split(":")[1]
+                            break
+                    devices.append({
+                        "id": device_id,
+                        "state": state,
+                        "model": model,
+                        "type": "emulator" if device_id.startswith("emulator-") else "device",
+                    })
+
+        # Get available AVDs
+        avds = []
+        emulator_path = shutil.which("emulator")
+        if emulator_path:
+            process = await asyncio.create_subprocess_exec(
+                emulator_path, "-list-avds",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+            avd_list = stdout.decode("utf-8").strip().split("\n")
+            avds = [avd.strip() for avd in avd_list if avd.strip()]
+
+        running = [d for d in devices if d["state"] == "device"]
+        trace.log("ADB_OK", f"{len(running)} running, {len(avds)} AVDs available")
+
+        return {
+            "success": True,
+            "devices": devices,
+            "running": running,
+            "avds": avds,
+            "output": f"{len(running)} devices running, {len(avds)} AVDs available",
+        }
+    except asyncio.TimeoutError:
+        trace.log("ADB_ERR", "Timeout")
+        return {"success": False, "error": "adb timeout"}
+    except Exception as e:
+        trace.log("ADB_ERR", str(e))
+        return {"success": False, "error": str(e)}
+
+
+async def _android_boot_emulator(
+    trace: TraceContext, avd_name: str, cold_boot: bool = False
+) -> Dict[str, Any]:
+    """Boot an Android emulator by AVD name."""
+    emulator_path = shutil.which("emulator")
+    if not emulator_path:
+        return {"success": False, "error": "emulator command not found"}
+
+    # Check if already running
+    if _adb_path:
+        process = await asyncio.create_subprocess_exec(
+            _adb_path, "devices",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+        if "emulator-" in stdout.decode() and "device" in stdout.decode():
+            trace.log("EMU_SKIP", "Emulator already running")
+            # Get the device ID
+            for line in stdout.decode().split("\n"):
+                if "emulator-" in line and "device" in line:
+                    device_id = line.split()[0]
+                    return {
+                        "success": True,
+                        "device_id": device_id,
+                        "message": "Emulator already running",
+                        "already_running": True,
+                    }
+
+    # Build command
+    cmd = [emulator_path, "-avd", avd_name, "-no-snapshot-load" if cold_boot else "-no-boot-anim"]
+
+    trace.log("EMU_START", f"Starting {avd_name}")
+
+    try:
+        # Start emulator in background (don't wait for it)
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+
+        # Wait for device to appear
+        for _ in range(60):  # Wait up to 60 seconds
+            await asyncio.sleep(1)
+            if _adb_path:
+                check = await asyncio.create_subprocess_exec(
+                    _adb_path, "devices",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await asyncio.wait_for(check.communicate(), timeout=5)
+                output = stdout.decode()
+                if "emulator-" in output and "device" in output:
+                    # Extract device ID
+                    for line in output.split("\n"):
+                        if "emulator-" in line and "device" in line:
+                            device_id = line.split()[0]
+                            trace.log("EMU_OK", f"Started {avd_name} as {device_id}")
+                            return {
+                                "success": True,
+                                "device_id": device_id,
+                                "avd_name": avd_name,
+                                "message": f"Emulator {avd_name} started",
+                            }
+
+        trace.log("EMU_ERR", "Timeout waiting for emulator")
+        return {"success": False, "error": "Timeout waiting for emulator to start"}
+
+    except Exception as e:
+        trace.log("EMU_ERR", str(e))
+        return {"success": False, "error": str(e)}
+
+
+async def _android_shutdown_emulator(
+    trace: TraceContext, device_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Shutdown an Android emulator."""
+    if not _adb_path:
+        return {"success": False, "error": "ADB not found"}
+
+    # If no device specified, find running emulator
+    if not device_id:
+        process = await asyncio.create_subprocess_exec(
+            _adb_path, "devices",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+        for line in stdout.decode().split("\n"):
+            if "emulator-" in line and "device" in line:
+                device_id = line.split()[0]
+                break
+
+        if not device_id:
+            return {"success": True, "message": "No running emulators to shutdown"}
+
+    trace.log("EMU_STOP", f"Stopping {device_id}")
+
+    try:
+        # Send emu kill command
+        process = await asyncio.create_subprocess_exec(
+            _adb_path, "-s", device_id, "emu", "kill",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=30)
+
+        if process.returncode != 0:
+            error = stderr.decode("utf-8", errors="replace")
+            # "error: closed" is actually success (emulator closed)
+            if "closed" not in error.lower():
+                trace.log("EMU_ERR", error)
+                return {"success": False, "error": f"Failed to shutdown: {error}"}
+
+        trace.log("EMU_OK", f"Stopped {device_id}")
+        return {"success": True, "device_id": device_id, "message": "Emulator shutdown"}
+
+    except asyncio.TimeoutError:
+        return {"success": False, "error": "Shutdown timeout"}
+    except Exception as e:
+        trace.log("EMU_ERR", str(e))
+        return {"success": False, "error": str(e)}
+
+
 TOOLS = [
     {
         "name": "flutter_tap",
@@ -984,6 +1182,37 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "udid": {"type": "string", "description": "Simulator UDID (default: first booted simulator)"},
+            },
+        },
+    },
+    # Android Emulator lifecycle tools
+    {
+        "name": "android_list_devices",
+        "description": "List Android devices, running emulators, and available AVDs.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "android_boot_emulator",
+        "description": "Boot an Android emulator by AVD name.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "avd_name": {"type": "string", "description": "AVD name (e.g., 'Pixel_7_API_35')"},
+                "cold_boot": {"type": "boolean", "description": "Perform cold boot (default: false)"},
+            },
+            "required": ["avd_name"],
+        },
+    },
+    {
+        "name": "android_shutdown_emulator",
+        "description": "Shutdown an Android emulator.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "device_id": {"type": "string", "description": "Device ID (default: first running emulator)"},
             },
         },
     },
@@ -1305,6 +1534,21 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
     elif name == "ios_shutdown_simulator":
         udid = arguments.get("udid")
         return await _ios_shutdown_simulator(trace, udid)
+
+    # Android Emulator lifecycle tools
+    elif name == "android_list_devices":
+        return await _android_list_devices(trace)
+
+    elif name == "android_boot_emulator":
+        avd_name = arguments.get("avd_name")
+        if not avd_name:
+            return {"success": False, "error": "avd_name is required"}
+        cold_boot = arguments.get("cold_boot", False)
+        return await _android_boot_emulator(trace, avd_name, cold_boot)
+
+    elif name == "android_shutdown_emulator":
+        device_id = arguments.get("device_id")
+        return await _android_shutdown_emulator(trace, device_id)
 
     else:
         return {"success": False, "error": f"Unknown tool: {name}"}
