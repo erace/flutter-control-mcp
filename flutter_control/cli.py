@@ -1,0 +1,197 @@
+"""CLI commands for Flutter Control MCP."""
+
+import argparse
+import os
+import secrets
+import subprocess
+import sys
+from pathlib import Path
+
+from . import __version__
+
+
+def get_paths():
+    """Get installation paths."""
+    return {
+        "log_dir": Path.home() / "Library" / "Logs" / "flutter-control",
+        "token_file": Path.home() / ".android-mcp-token",
+        "launch_agent": Path.home() / "Library" / "LaunchAgents" / "com.erace.flutter-control.plist",
+        "venv_python": Path(sys.executable),
+    }
+
+
+def install_service():
+    """Install Flutter Control as a macOS LaunchAgent service."""
+    parser = argparse.ArgumentParser(description="Install Flutter Control as macOS service")
+    parser.add_argument("--port", type=int, default=9225, help="Port to run on (default: 9225)")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
+    parser.add_argument("--uninstall", action="store_true", help="Uninstall the service")
+    args = parser.parse_args()
+
+    paths = get_paths()
+
+    if args.uninstall:
+        return uninstall_service_impl(paths)
+
+    print(f"=== Flutter Control v{__version__} - Service Installation ===\n")
+
+    # Create log directory
+    paths["log_dir"].mkdir(parents=True, exist_ok=True)
+    print(f"✓ Log directory: {paths['log_dir']}")
+
+    # Ensure token exists
+    if not paths["token_file"].exists():
+        token = secrets.token_hex(16)
+        paths["token_file"].write_text(token)
+        paths["token_file"].chmod(0o600)
+        print(f"✓ Generated auth token: {paths['token_file']}")
+    else:
+        print(f"✓ Using existing token: {paths['token_file']}")
+
+    # Find maestro
+    maestro_path = Path.home() / ".maestro" / "bin"
+    if not (maestro_path / "maestro").exists():
+        print("\n⚠ Maestro not found. Install it with:")
+        print("  curl -Ls 'https://get.maestro.mobile.dev' | bash")
+        print()
+
+    # Create LaunchAgent plist
+    plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.erace.flutter-control</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{paths['venv_python']}</string>
+        <string>-m</string>
+        <string>flutter_control.mcp.server</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>FLUTTER_CONTROL_PORT</key>
+        <string>{args.port}</string>
+        <key>FLUTTER_CONTROL_HOST</key>
+        <string>{args.host}</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:{maestro_path}</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>{paths['log_dir']}/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{paths['log_dir']}/stderr.log</string>
+</dict>
+</plist>
+"""
+
+    paths["launch_agent"].parent.mkdir(parents=True, exist_ok=True)
+    paths["launch_agent"].write_text(plist_content)
+    print(f"✓ Created LaunchAgent: {paths['launch_agent']}")
+
+    # Load the service
+    subprocess.run(["launchctl", "unload", str(paths["launch_agent"])],
+                   capture_output=True)
+    result = subprocess.run(["launchctl", "load", str(paths["launch_agent"])],
+                           capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print(f"\n✗ Failed to load service: {result.stderr}")
+        return 1
+
+    print(f"✓ Service started on port {args.port}")
+
+    # Verify
+    import time
+    time.sleep(2)
+
+    try:
+        import urllib.request
+        with urllib.request.urlopen(f"http://localhost:{args.port}/health", timeout=5) as resp:
+            if resp.status == 200:
+                print(f"\n=== Installation Complete ===")
+                print(f"Server: http://localhost:{args.port}")
+                print(f"Token: {paths['token_file'].read_text().strip()}")
+                print(f"Logs: tail -f {paths['log_dir']}/stderr.log")
+                return 0
+    except Exception:
+        pass
+
+    print(f"\n⚠ Service may not be running. Check logs:")
+    print(f"  tail -f {paths['log_dir']}/stderr.log")
+    return 1
+
+
+def uninstall_service_impl(paths):
+    """Uninstall the service."""
+    print("=== Uninstalling Flutter Control Service ===\n")
+
+    if paths["launch_agent"].exists():
+        subprocess.run(["launchctl", "unload", str(paths["launch_agent"])],
+                       capture_output=True)
+        paths["launch_agent"].unlink()
+        print(f"✓ Removed LaunchAgent")
+    else:
+        print(f"  LaunchAgent not found")
+
+    print("\nService uninstalled. To fully remove:")
+    print(f"  pip uninstall flutter-control-mcp")
+    print(f"  rm -rf {paths['log_dir']}")
+    print(f"  rm {paths['token_file']}  # if not shared with other tools")
+    return 0
+
+
+def uninstall_service():
+    """Uninstall Flutter Control macOS service."""
+    paths = get_paths()
+    return uninstall_service_impl(paths)
+
+
+def run_server():
+    """Run the MCP server directly (for development)."""
+    from .mcp.server import main
+    main()
+
+
+def show_version():
+    """Show version information."""
+    print(f"flutter-control-mcp {__version__}")
+
+
+def main():
+    """Main CLI entry point."""
+    parser = argparse.ArgumentParser(
+        description="Flutter Control MCP - UI automation for Flutter apps",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Commands:
+  flutter-control-install    Install as macOS LaunchAgent service
+  flutter-control-uninstall  Uninstall the service
+  flutter-control-server     Run server directly (development)
+
+Examples:
+  # Install on default port 9225
+  flutter-control-install
+
+  # Install on custom port
+  flutter-control-install --port 9226
+
+  # Uninstall
+  flutter-control-install --uninstall
+"""
+    )
+    parser.add_argument("--version", action="store_true", help="Show version")
+    args = parser.parse_args()
+
+    if args.version:
+        show_version()
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

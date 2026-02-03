@@ -99,17 +99,30 @@ When tests run, bootstrap automatically:
 
 All backends (Maestro + Driver) are then available for automation.
 
-## Deploy/Update
+## Installation
 
-**Host Mac (Android):**
+### Via pip (Recommended)
+
+```bash
+# Create venv and install
+python3 -m venv ~/.flutter-control-venv
+source ~/.flutter-control-venv/bin/activate
+pip install git+https://github.com/erace/flutter-control-mcp.git
+
+# Install as macOS service (Android: port 9225, iOS: port 9226)
+flutter-control-install --port 9225  # Android
+flutter-control-install --port 9226  # iOS
+
+# Upgrade
+pip install --upgrade git+https://github.com/erace/flutter-control-mcp.git
+flutter-control-install  # Restart with new version
+```
+
+### Via curl (Legacy)
+
 ```bash
 curl -sS http://claude-dev.local:9999/scripts/install.sh | bash      # Fresh install
 curl -sS http://claude-dev.local:9999/scripts/update-host.sh | bash  # Update
-```
-
-**VM (iOS):**
-```bash
-./scripts/start-vm-server.sh
 ```
 
 ## Development Commands

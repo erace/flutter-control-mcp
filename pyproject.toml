@@ -34,6 +34,12 @@ dev = [
     "pytest-asyncio>=0.21.0",
 ]
 
+[project.scripts]
+flutter-control = "flutter_control.cli:main"
+flutter-control-install = "flutter_control.cli:install_service"
+flutter-control-uninstall = "flutter_control.cli:uninstall_service"
+flutter-control-server = "flutter_control.cli:run_server"
+
 [project.urls]
 Homepage = "https://github.com/erace/flutter-control-mcp"
 Repository = "https://github.com/erace/flutter-control-mcp"

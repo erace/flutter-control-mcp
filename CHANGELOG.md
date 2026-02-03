@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- pip installation from GitHub (`pip install git+https://...`)
+- CLI commands: `flutter-control-install`, `flutter-control-uninstall`, `flutter-control-server`
+- README.md with installation and usage instructions
+
 ## [0.1.0] - 2025-02-03
 
 ### Added
