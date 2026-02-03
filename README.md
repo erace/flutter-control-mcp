@@ -1,69 +1,125 @@
 # Flutter Control MCP
 
-MCP server for Flutter UI automation via Maestro and Flutter Driver.
+MCP server for Flutter app automation on iOS simulators and Android emulators.
 
-## Features
+## Overview
 
-- **Maestro backend**: Accessibility-layer automation (works on any app)
-- **Flutter Driver backend**: Widget-tree automation (requires driver extension)
-- **Unified API**: Auto-selects backend based on finder type
-- **Fast operations**: Persistent Maestro MCP connection (9-25x faster)
-- **Cross-platform**: Android emulator + iOS simulator
+Flutter Control provides a unified API for automating Flutter apps using two backends:
+
+| Backend | How it works | Best for |
+|---------|--------------|----------|
+| **Maestro** | Accessibility layer | Any app, text/id finders |
+| **Flutter Driver** | Widget tree access | Apps with driver extension, key/type finders |
+
+The server auto-selects the right backend based on your finder type.
+
+## Architecture
+
+```
+┌─── VM (claude-dev.local) ───┐      ┌─── Host Mac (phost.local) ───┐
+│                             │      │                               │
+│  iOS MCP Server (:9226)     │      │  Android MCP Server (:9225)   │
+│         ↓                   │      │         ↓                     │
+│  iOS Simulator              │      │  Android Emulator             │
+└─────────────────────────────┘      └───────────────────────────────┘
+```
+
+- **iOS**: Server runs on the same machine as simulator (VM)
+- **Android**: Server runs on host Mac with emulator, accessed from VM
 
 ## Installation
 
-### From GitHub
+### Host Mac (Android)
 
 ```bash
-# Create a virtual environment (recommended)
+# First time: create venv and install
 python3 -m venv ~/.flutter-control-venv
-source ~/.flutter-control-venv/bin/activate
+~/.flutter-control-venv/bin/pip install git+https://github.com/erace/flutter-control-mcp.git
+~/.flutter-control-venv/bin/flutter-control-install
 
-# Install from GitHub
-pip install git+https://github.com/erace/flutter-control-mcp.git
-
-# Install as macOS service
-flutter-control-install
+# Updates (from VM with HTTP server running)
+curl -sS http://claude-dev.local:9999/update.sh | bash
 ```
 
-### From specific version
+### VM (iOS)
 
 ```bash
-pip install git+https://github.com/erace/flutter-control-mcp.git@v0.1.0
+# Clone and install
+git clone https://github.com/erace/flutter-control-mcp.git
+cd flutter-control-mcp
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+
+# Run server
+FLUTTER_CONTROL_PORT=9226 python -m flutter_control.mcp.server
 ```
 
-### Upgrade
+### Requirements
 
-```bash
-pip install --upgrade git+https://github.com/erace/flutter-control-mcp.git
-flutter-control-install  # Restart service with new version
+- Python 3.11+
+- macOS
+- [Maestro](https://maestro.mobile.dev/): `curl -Ls "https://get.maestro.mobile.dev" | bash`
+- Android SDK (for Android)
+- Xcode (for iOS)
+
+## Flutter App Setup
+
+To use Flutter Driver backend, add driver extension to your app:
+
+**main.dart:**
+```dart
+import 'package:flutter_driver/driver_extension.dart';
+
+void main() {
+  // Enable driver in debug builds only (zero overhead in release)
+  assert(() {
+    enableFlutterDriverExtension();
+    return true;
+  }());
+  runApp(const MyApp());
+}
 ```
 
-## Usage
-
-### Service Management
-
-```bash
-# Install service (default port 9225)
-flutter-control-install
-
-# Install on custom port
-flutter-control-install --port 9226
-
-# Uninstall service
-flutter-control-install --uninstall
-
-# Check version
-flutter-control --version
+**pubspec.yaml:**
+```yaml
+dev_dependencies:
+  flutter_driver:
+    sdk: flutter
 ```
 
-### API Endpoints
+**Add keys to widgets for automation:**
+```dart
+ElevatedButton(
+  key: const Key('submit_btn'),  // For {key: "submit_btn"}
+  onPressed: _onSubmit,
+  child: const Text('Submit'),   // For {text: "Submit"}
+)
+```
+
+## Discovery
+
+Flutter Control uses **mDNS** (Bonjour) to discover the Flutter VM Service - the same mechanism Flutter tooling uses. When your app launches with driver extension enabled, it advertises via `_dartVmService._tcp`. The server discovers this automatically.
+
+No need to run `flutter run` or manually find ports. Just:
+1. Install your debug app
+2. Launch it
+3. Call MCP tools
+
+Fallbacks: logcat parsing (Android), port scanning (iOS).
+
+## API Usage
+
+### Endpoints
 
 ```bash
 # Health check
 curl http://localhost:9225/health
 
-# List available tools
+# Version info
+curl http://localhost:9225/version
+
+# List tools
 curl http://localhost:9225/tools
 
 # Call a tool
@@ -73,71 +129,101 @@ curl -X POST http://localhost:9225/call \
   -d '{"name": "flutter_tap", "arguments": {"finder": {"text": "Submit"}}}'
 ```
 
-### MCP Tools
+### Finder Types
+
+| Finder | Backend | Example | Notes |
+|--------|---------|---------|-------|
+| `{text: "..."}` | Maestro | `{"text": "Submit"}` | Partial match |
+| `{id: "..."}` | Maestro | `{"id": "btn_submit"}` | Android resource ID |
+| `{key: "..."}` | Driver | `{"key": "submit_btn"}` | Widget ValueKey |
+| `{type: "..."}` | Driver | `{"type": "TextButton"}` | Must be unique |
+
+Force a specific backend: `{"text": "Submit", "backend": "maestro"}`
+
+## MCP Tools
+
+### UI Interactions
 
 | Tool | Description |
 |------|-------------|
-| `flutter_tap` | Tap on element by text, key, type, or id |
-| `flutter_double_tap` | Double tap on element |
-| `flutter_long_press` | Long press on element |
-| `flutter_swipe` | Swipe in direction |
-| `flutter_enter_text` | Enter text into field |
-| `flutter_clear_text` | Clear text field |
+| `flutter_tap` | Tap element |
+| `flutter_double_tap` | Double tap element |
+| `flutter_long_press` | Long press element |
+| `flutter_swipe` | Swipe direction (up/down/left/right) |
+| `flutter_enter_text` | Type text into field |
+| `flutter_clear_text` | Clear current text field |
+
+### Assertions
+
+| Tool | Description |
+|------|-------------|
 | `flutter_assert_visible` | Assert element is visible |
 | `flutter_assert_not_visible` | Assert element is not visible |
-| `flutter_screenshot` | Take screenshot (Maestro) |
-| `flutter_screenshot_adb` | Take screenshot (ADB, faster) |
+
+### Screenshots
+
+| Tool | Description |
+|------|-------------|
+| `flutter_screenshot` | Screenshot via Maestro |
+| `flutter_screenshot_adb` | Screenshot via ADB (faster, Android only) |
+
+### Flutter Driver
+
+| Tool | Description |
+|------|-------------|
+| `flutter_driver_discover` | Find VM Service URI via mDNS |
+| `flutter_driver_connect` | Connect to VM Service |
+| `flutter_driver_disconnect` | Disconnect |
 | `flutter_get_text` | Get text from widget |
-| `flutter_widget_tree` | Get widget tree |
-| `flutter_driver_connect` | Connect to Flutter Driver |
-| `flutter_driver_disconnect` | Disconnect from Flutter Driver |
-| `flutter_version` | Get version info |
+| `flutter_widget_tree` | Dump render tree |
+| `flutter_driver_tap` | Tap via Driver (key/type finders) |
 
-### Finder Types
+### iOS Simulator
 
-| Finder | Backend | Example |
-|--------|---------|---------|
-| `{text: "..."}` | Maestro | `{"text": "Submit"}` |
-| `{id: "..."}` | Maestro | `{"id": "btn_submit"}` |
-| `{key: "..."}` | Driver | `{"key": "submit_button"}` |
-| `{type: "..."}` | Driver | `{"type": "ElevatedButton"}` |
+| Tool | Description |
+|------|-------------|
+| `ios_list_devices` | List available simulators |
+| `ios_boot_simulator` | Boot simulator by name or UDID |
+| `ios_shutdown_simulator` | Shutdown simulator |
 
-## Requirements
+### Debug
 
-- Python 3.11+
-- macOS (for LaunchAgent service)
-- [Maestro](https://maestro.mobile.dev/) for UI automation
-- Android SDK (for Android automation)
-- Xcode (for iOS automation)
+| Tool | Description |
+|------|-------------|
+| `flutter_version` | Get server version and info |
+| `flutter_debug_traces` | Get recent operation traces |
+| `flutter_debug_trace` | Get specific trace by ID |
 
-### Install Maestro
+## Examples
 
 ```bash
-curl -Ls "https://get.maestro.mobile.dev" | bash
-```
+# Tap button by text
+curl -X POST http://localhost:9225/call \
+  -d '{"name": "flutter_tap", "arguments": {"finder": {"text": "Increment"}}}'
 
-## Flutter App Setup
+# Tap by widget key
+curl -X POST http://localhost:9225/call \
+  -d '{"name": "flutter_tap", "arguments": {"finder": {"key": "increment_btn"}}}'
 
-To use Flutter Driver backend, add to your app's `main.dart`:
+# Get counter value
+curl -X POST http://localhost:9225/call \
+  -d '{"name": "flutter_get_text", "arguments": {"finder": {"key": "counter_label"}}}'
 
-```dart
-import 'package:flutter_driver/driver_extension.dart';
+# Assert text visible
+curl -X POST http://localhost:9225/call \
+  -d '{"name": "flutter_assert_visible", "arguments": {"finder": {"text": "Welcome"}}}'
 
-void main() {
-  assert(() {
-    enableFlutterDriverExtension();
-    return true;
-  }());
-  runApp(const MyApp());
-}
-```
+# Take screenshot
+curl -X POST http://localhost:9225/call \
+  -d '{"name": "flutter_screenshot", "arguments": {}}'
 
-And `pubspec.yaml`:
+# Swipe down
+curl -X POST http://localhost:9225/call \
+  -d '{"name": "flutter_swipe", "arguments": {"direction": "down"}}'
 
-```yaml
-dev_dependencies:
-  flutter_driver:
-    sdk: flutter
+# Enter text in field
+curl -X POST http://localhost:9225/call \
+  -d '{"name": "flutter_enter_text", "arguments": {"text": "hello@example.com", "finder": {"key": "email_field"}}}'
 ```
 
 ## Development
@@ -147,17 +233,27 @@ dev_dependencies:
 git clone https://github.com/erace/flutter-control-mcp.git
 cd flutter-control-mcp
 
-# Install dev dependencies
+# Setup
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
 # Run tests
-pytest tests/ -v
+TEST_PLATFORM=ios IOS_MCP_PORT=9226 pytest tests/ -v
 
-# Run server directly
-flutter-control-server
+# Serve for host updates
+python3 -m http.server 9999
 ```
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Element not found | Text uses partial match - check substring |
+| Driver 403 Forbidden | Auth token missing - use `flutter_driver_discover` |
+| Too many elements | Type finder matched multiple - use key instead |
+| Maestro not installed | `curl -Ls "https://get.maestro.mobile.dev" \| bash` |
+| mDNS not working | Falls back to logcat (Android) or port scan (iOS) |
 
 ## License
 
