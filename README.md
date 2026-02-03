@@ -289,6 +289,13 @@ ANDROID_HOST=farm-01.local TEST_PLATFORM=android pytest tests/ -v
 python3 -m http.server 9999
 ```
 
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) - System design and data flow
+- [Configuration](docs/CONFIGURATION.md) - Environment variables and settings
+- [Installation](docs/INSTALLATION.md) - Detailed setup instructions
+- [Development](docs/DEVELOPMENT.md) - Contributing and extending
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -298,6 +305,8 @@ python3 -m http.server 9999
 | Too many elements | Type finder matched multiple - use key instead |
 | Maestro not installed | `curl -Ls "https://get.maestro.mobile.dev" \| bash` |
 | mDNS not working | Falls back to logcat (Android) or port scan (iOS) |
+
+See [docs/INSTALLATION.md](docs/INSTALLATION.md) for more troubleshooting.
 
 ## License
 
