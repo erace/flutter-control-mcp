@@ -33,8 +33,13 @@ def pytest_configure(config):
 
 
 def _validate_environment():
-    """Check for potentially stale environment variables."""
+    """Check for potentially stale environment variables and set defaults."""
     warnings = []
+
+    # Auto-configure ADB_SERVER_SOCKET for Android tests via proxy
+    if os.getenv("TEST_PLATFORM") == "android" and not os.getenv("ADB_SERVER_SOCKET"):
+        bridge_host = os.getenv("ANDROID_MCP_BRIDGE_HOST", "phost.local")
+        os.environ["ADB_SERVER_SOCKET"] = f"tcp:{bridge_host}:15037"
 
     # Check ANDROID_MCP_HOST
     host = os.getenv("ANDROID_MCP_HOST", "")

@@ -277,9 +277,10 @@ Bootstrap automatically:
 source .venv/bin/activate
 export PATH="$PATH:/Users/admin/Library/Android/sdk/platform-tools"
 
-# Run Android tests (FROM VM - uses phost.local)
+# Run Android tests (FROM VM - uses ADB proxy on host)
 TEST_PLATFORM=android ANDROID_MCP_HOST=phost.local ANDROID_MCP_PORT=9225 \
   ANDROID_MCP_BRIDGE_HOST=phost.local ANDROID_MCP_BRIDGE_PORT=9222 \
+  ADB_SERVER_SOCKET=tcp:phost.local:15037 \
   pytest tests/ -v
 
 # Run iOS tests
