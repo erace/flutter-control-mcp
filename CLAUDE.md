@@ -284,6 +284,53 @@ pytest tests/ -m "slow" -v
 
 **Markers:** `slow`, `driver_only`, `maestro_only`, `android_only`, `ios_only`
 
+## Versioning & Releases
+
+**Current version:** Check `flutter_control/__version__.py`
+
+This project uses [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH):
+- **MAJOR**: Breaking API changes
+- **MINOR**: New features (backwards compatible)
+- **PATCH**: Bug fixes (backwards compatible)
+
+### Version Files
+| File | Purpose |
+|------|---------|
+| `flutter_control/__version__.py` | Single source of truth |
+| `pyproject.toml` | Package metadata |
+| `CHANGELOG.md` | Release notes (Keep a Changelog format) |
+
+### Release Process
+
+```bash
+# 1. Add changes to CHANGELOG.md under [Unreleased]
+# 2. Run release script
+./scripts/release.sh patch   # 0.1.0 → 0.1.1
+./scripts/release.sh minor   # 0.1.0 → 0.2.0
+./scripts/release.sh major   # 0.1.0 → 1.0.0
+
+# 3. Push
+git push && git push --tags
+
+# 4. Create GitHub release
+gh release create v0.1.1 --generate-notes
+```
+
+### During Development
+When making changes, update CHANGELOG.md under `[Unreleased]`:
+```markdown
+## [Unreleased]
+
+### Added
+- New feature description
+
+### Fixed
+- Bug fix description
+
+### Changed
+- Change description
+```
+
 ## Test Progress Display
 
 When showing test results, use this format:
