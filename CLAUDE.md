@@ -31,14 +31,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Multi-host design:** Flutter Control can target simulators/emulators on any reachable host. The VM can run headless while UI work happens on Host Mac for better stability (Tart VMs can freeze in non-headless mode).
 
-**MCP Servers (naming: `<platform>-<location>`):**
-| Name | Host | Port | Target |
-|------|------|------|--------|
-| `android-host` | phost.local | 9225 | Android Emulator on Host Mac |
-| `ios-host` | phost.local | 9227 | iOS Simulator on Host Mac |
-| `ios-vm` | localhost | 9226 | iOS Simulator in VM (optional) |
+**MCP Servers (key = `<host>:<port>`):**
+| Key | Platform | Target |
+|-----|----------|--------|
+| `phost.local:9225` | Android | Emulator on Host Mac |
+| `phost.local:9227` | iOS | Simulator on Host Mac |
+| `localhost:9226` | iOS | Simulator in VM (optional) |
 
-Scales to farms: `ios-farm-01`, `android-farm-01`, etc.
+Config uses args instead of env vars - self-documenting:
+```json
+"phost.local:9227": {
+  "command": "flutter-control-mcp",
+  "args": ["phost.local", "9227"]
+}
+```
+
+Scales to farms: `farm-01.local:9227`, `192.168.1.100:9225`, etc.
 
 **Two backends:**
 - **Maestro**: Accessibility-layer automation, works on any app, uses text/id finders

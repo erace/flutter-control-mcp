@@ -188,8 +188,13 @@ def mcp_stdio():
     This is the main entry point for MCP clients like Claude Code.
     Reads JSON-RPC requests from stdin, proxies to HTTP server, returns responses.
 
-    Environment variables:
-        FLUTTER_CONTROL_HOST: Server host (default: phost.local for Android, localhost for iOS)
+    Usage:
+        flutter-control-mcp <host> <port>       # Preferred: explicit host and port
+        flutter-control-mcp <host:port>         # Alternative: combined format
+        flutter-control-mcp                     # Fallback: use env vars
+
+    Environment variables (fallback):
+        FLUTTER_CONTROL_HOST: Server host (default: phost.local)
         FLUTTER_CONTROL_PORT: Server port (default: 9225)
         FLUTTER_CONTROL_TOKEN: Auth token (or reads from ~/.android-mcp-token)
     """
@@ -205,8 +210,24 @@ def mcp_stdio():
     signal.signal(signal.SIGTERM, handle_shutdown)
     signal.signal(signal.SIGINT, handle_shutdown)
 
-    host = os.environ.get("FLUTTER_CONTROL_HOST", "phost.local")
-    port = os.environ.get("FLUTTER_CONTROL_PORT", "9225")
+    # Parse host and port from args or env vars
+    # Priority: args > env vars > defaults
+    if len(sys.argv) >= 3:
+        # flutter-control-mcp <host> <port>
+        host = sys.argv[1]
+        port = sys.argv[2]
+    elif len(sys.argv) == 2 and ":" in sys.argv[1]:
+        # flutter-control-mcp <host:port>
+        host, port = sys.argv[1].rsplit(":", 1)
+    elif len(sys.argv) == 2:
+        # flutter-control-mcp <host> (use default port)
+        host = sys.argv[1]
+        port = os.environ.get("FLUTTER_CONTROL_PORT", "9225")
+    else:
+        # Fallback to env vars
+        host = os.environ.get("FLUTTER_CONTROL_HOST", "phost.local")
+        port = os.environ.get("FLUTTER_CONTROL_PORT", "9225")
+
     base_url = f"http://{host}:{port}"
 
     # Get token
