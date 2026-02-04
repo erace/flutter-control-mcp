@@ -107,8 +107,6 @@ def bootstrap_result(platform_config: PlatformConfig) -> BootstrapResult:
         if platform_config.is_android:
             # Use config from PlatformConfig (derived from ANDROID_HOST)
             bootstrap = AndroidBootstrap(
-                mcp_bridge_host=platform_config.bridge_host,
-                mcp_bridge_port=platform_config.bridge_port,
                 token=token,
                 flutter_control_host=platform_config.mcp_host,
                 flutter_control_port=platform_config.mcp_port,

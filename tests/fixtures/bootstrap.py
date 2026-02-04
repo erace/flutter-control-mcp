@@ -109,26 +109,22 @@ class MCPBootstrap:
     async def ensure_device_running(self) -> str | None:
         """Ensure device/emulator is running. Returns device ID."""
         if self.platform == "android":
-            # Check if emulator already running via bridge
-            result = await self._call_bridge("android_list_devices")
-            output = result.get("result", "")
-            if "emulator-" in output and "device" in output:
-                # Extract device ID from format: "  - emulator-5554: sdk_gphone64_arm64 (device)"
-                import re
-                match = re.search(r'(emulator-\d+)', output)
-                if match:
-                    return match.group(1)
+            # Check if emulator already running via flutter-control
+            result = await self._call_mcp("android_list_devices")
+            running = result.get("running", [])
+            if running:
+                return running[0].get("id", "emulator-5554")
 
             # Start emulator
             avd_name = os.getenv("ANDROID_AVD_NAME", "Pixel_7_API_35")
-            start_result = await self._call_bridge(
+            start_result = await self._call_mcp(
                 "android_start_emulator",
                 {"avd_name": avd_name},
                 timeout=180
             )
             if start_result.get("success"):
                 await asyncio.sleep(5)  # Wait for emulator to be fully ready
-                return "emulator-5554"
+                return start_result.get("device_id", "emulator-5554")
             return None
         else:
             # iOS - check for booted simulators via MCP
@@ -138,16 +134,16 @@ class MCPBootstrap:
                 if booted:
                     return booted[0]["udid"]
 
-            # Boot simulator
+            # Start simulator (renamed from boot)
             device_name = os.getenv("IOS_SIMULATOR_NAME", "iPhone 16e")
-            boot_result = await self._call_mcp(
-                "ios_boot_simulator",
+            start_result = await self._call_mcp(
+                "ios_start_simulator",
                 {"device_name": device_name},
                 timeout=60
             )
-            if boot_result.get("success"):
+            if start_result.get("success"):
                 await asyncio.sleep(3)
-                return boot_result.get("device_id")
+                return start_result.get("device_id")
             return None
 
     async def install_app(self, device_id: str) -> bool:
@@ -293,19 +289,18 @@ class AndroidBootstrap(MCPBootstrap):
 
     def __init__(
         self,
-        mcp_bridge_host: str,
-        mcp_bridge_port: int,
         token: str,
         flutter_control_host: str = "phost.local",
         flutter_control_port: int = 9225,
+        # Legacy params (ignored - bridge merged into flutter-control)
+        mcp_bridge_host: str = None,
+        mcp_bridge_port: int = None,
     ):
         super().__init__(
             mcp_host=flutter_control_host,
             mcp_port=flutter_control_port,
             token=token,
             platform="android",
-            bridge_host=mcp_bridge_host,
-            bridge_port=mcp_bridge_port,
         )
 
 

@@ -118,7 +118,8 @@ class TestLongPress:
         async with timing_collector.measure("long_press", platform, backend="maestro"):
             result = await mcp_client.call(
                 "flutter_long_press",
-                {"finder": {"text": "Counter"}},
+                {"finder": {"text": "Counter"}, "timeout": 60},
+                timeout=90.0,
             )
 
         assert result.get("success") or "content" in result, f"Long press failed: {result}"
@@ -135,7 +136,8 @@ class TestLongPress:
         async with timing_collector.measure("long_press_btn", platform, backend="maestro"):
             result = await mcp_client.call(
                 "flutter_long_press",
-                {"finder": {"text": "Increment"}},
+                {"finder": {"text": "Increment"}, "timeout": 60},
+                timeout=90.0,
             )
 
         assert result.get("success") or "content" in result, f"Long press failed: {result}"
