@@ -18,10 +18,14 @@ fi
 echo "Installing $WHEEL..."
 "$VENV/bin/pip" install -q --force-reinstall "$VM_URL/dist/$WHEEL"
 
-echo "Restarting service..."
+echo "Restarting services..."
+# Restart all flutter-control services
 launchctl kickstart -k gui/$(id -u)/com.erace.flutter-control 2>/dev/null || true
+launchctl kickstart -k gui/$(id -u)/com.erace.flutter-control.ios 2>/dev/null || true
 
 # Verify
 sleep 2
-VERSION=$(curl -s http://localhost:9225/version 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
-echo "Updated to v${VERSION:-unknown}"
+echo ""
+echo "Service status:"
+echo "  Android (9225): $(curl -s http://localhost:9225/version 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4 || echo 'not responding')"
+echo "  iOS (9227):     $(curl -s http://localhost:9227/version 2>/dev/null | grep -o '"version":"[^"]*"' | cut -d'"' -f4 || echo 'not responding')"

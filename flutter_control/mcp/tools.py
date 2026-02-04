@@ -1461,7 +1461,7 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         # Smart screenshot: detect platform, use native method, fallback to Maestro
         import os as os_mod
         server_port = int(os_mod.environ.get("FLUTTER_CONTROL_PORT", "9225"))
-        is_ios = server_port == 9226
+        is_ios = server_port in (9226, 9227)
 
         if is_ios:
             # Try simctl first
@@ -1496,7 +1496,7 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         # Explicit Maestro screenshot
         import os as os_mod
         server_port = int(os_mod.environ.get("FLUTTER_CONTROL_PORT", "9225"))
-        platform = "ios" if server_port == 9226 else "android"
+        platform = "ios" if server_port in (9226, 9227) else "android"
 
         result = await _maestro.screenshot(trace, timeout, device)
         response = {"success": result.success, "error": result.error_message, "method": "maestro"}
@@ -1552,9 +1552,9 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         device_id = arguments.get("device")
         host_port = arguments.get("host_port", 9223)
 
-        # Detect iOS: server port 9226 or device ID is a UDID
+        # Detect iOS: server port 9226/9227 or device ID is a UDID
         server_port = int(os_module.environ.get("FLUTTER_CONTROL_PORT", "9225"))
-        is_ios_server = server_port == 9226
+        is_ios_server = server_port in (9226, 9227)
         is_ios_udid = device_id and len(device_id) == 36 and device_id.count("-") == 4
         is_ios = is_ios_server or is_ios_udid
 
@@ -1644,7 +1644,7 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         from .. import __version__
 
         port = int(os.environ.get("FLUTTER_CONTROL_PORT", 9225))
-        plat = "ios" if port == 9226 else "android"
+        plat = "ios" if port in (9226, 9227) else "android"
 
         # Get deployment time from tools.py mtime
         try:
