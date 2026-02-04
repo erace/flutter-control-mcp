@@ -19,7 +19,8 @@ class TestScreenshot:
             result = await mcp_client.call("flutter_screenshot", {})
 
         assert result.get("success"), f"Screenshot failed: {result}"
-        assert "image" in result, f"No image in result: {result}"
+        # Screenshots now save to file and return path
+        assert "path" in result, f"No path in result: {result}"
         # Should report which method was used
         assert result.get("method") in ["adb", "simctl", "maestro"], f"Unknown method: {result}"
 
