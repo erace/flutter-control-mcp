@@ -19,9 +19,10 @@ from ..__version__ import __version__ as VERSION
 START_TIME = datetime.now(timezone.utc)
 
 # Detect platform based on port
+# 9225 = Android (Host), 9226 = iOS (VM), 9227 = iOS (Host)
 def _get_platform():
     port = int(os.environ.get("FLUTTER_CONTROL_PORT", MCP_PORT))
-    return "ios" if port == 9226 else "android"
+    return "ios" if port in (9226, 9227) else "android"
 
 def _get_deployed_at():
     """Get deployment time from server.py mtime."""

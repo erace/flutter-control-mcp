@@ -29,7 +29,7 @@ fi
 source "$VENV_PATH/bin/activate"
 pip install --upgrade pip -q
 echo "Installing ${WHEEL_NAME}..."
-pip install --upgrade "${WHEEL_URL}/${WHEEL_NAME}" -q
+pip install --force-reinstall "${WHEEL_URL}/${WHEEL_NAME}" -q
 
 # Get installed version
 VERSION=$(python3 -c "from flutter_control import __version__; print(__version__)")

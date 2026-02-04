@@ -13,9 +13,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ VM (Claude Code)                                            │
+│ VM (Claude Code) - runs headless                            │
 │                                                              │
-│  iOS MCP Server (port 9226) ─────→ iOS Simulator            │
+│  iOS MCP Server (port 9226) ─────→ iOS Simulator (optional) │
 │  Observatory Relay (port 9223) ───┐                         │
 └───────────────────────────────────│─────────────────────────┘
                                     │ HTTP/TCP
@@ -24,9 +24,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 │ Host Mac                                                     │
 │                                                              │
 │  Android MCP Server (port 9225) ──→ Android Emulator        │
+│  iOS MCP Server (port 9227) ──────→ iOS Simulator           │
 │  Observatory Bridge (port 9233) ──→ ADB forward:9223        │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Multi-host design:** Flutter Control can target simulators/emulators on any reachable host. The VM can run headless while UI work happens on Host Mac for better stability (Tart VMs can freeze in non-headless mode).
+
+**MCP Server Ports:**
+| Port | Platform | Location | Purpose |
+|------|----------|----------|---------|
+| 9225 | Android | Host Mac | Android emulator control |
+| 9226 | iOS | VM | iOS simulator in VM (optional) |
+| 9227 | iOS | Host Mac | iOS simulator on Host Mac |
 
 **Two backends:**
 - **Maestro**: Accessibility-layer automation, works on any app, uses text/id finders
@@ -240,8 +250,9 @@ VM:9223 (relay) → Host:9233 (bridge) → Host:9223 (ADB fwd) → Emulator
 | Port | Service |
 |------|---------|
 | 9222 | android-mcp-bridge (device lifecycle) |
-| 9225 | flutter-control Android (automation) |
-| 9226 | flutter-control iOS (automation) |
+| 9225 | flutter-control Android on Host Mac |
+| 9226 | flutter-control iOS in VM |
+| 9227 | flutter-control iOS on Host Mac |
 | 9223 | Observatory relay (hot reload) |
 | 9233 | Observatory bridge on host |
 
