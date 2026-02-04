@@ -133,7 +133,11 @@ _adb_path = _find_adb()
 
 
 async def _discover_vm_service_uri(trace: TraceContext, device: Optional[str] = None) -> Optional[str]:
-    """Discover VM service URI using mDNS (preferred), with logcat fallback for Android."""
+    """Discover VM service URI.
+
+    For Android: Uses logcat first (mDNS caches stale entries on macOS)
+    For iOS: Uses mDNS (reliable for local simulators)
+    """
     import os
     import re
 
@@ -146,13 +150,39 @@ async def _discover_vm_service_uri(trace: TraceContext, device: Optional[str] = 
                     return match.group(0)
         return None
 
-    # Detect platform from server port (9226=iOS, 9225=Android) or device UDID
+    # Detect platform from server port (9226/9227=iOS, 9225=Android) or device UDID
     server_port = int(os.getenv("FLUTTER_CONTROL_PORT", "9225"))
-    is_ios_server = server_port == 9226
+    is_ios_server = server_port in (9226, 9227)
     is_ios_udid = device and len(device) == 36 and device.count("-") == 4
     is_ios = is_ios_server or is_ios_udid
 
-    # Try mDNS first (works on both iOS and Android, this is how Flutter does it)
+    # For Android: Use logcat FIRST (mDNS on macOS caches stale entries)
+    # Use -s flutter:I to filter only flutter logs (avoids buffer overflow with *:I)
+    if not is_ios and _adb_path:
+        trace.log("DISCOVER_LOGCAT", "Using logcat for Android")
+        try:
+            cmd = [_adb_path]
+            if device:
+                cmd.extend(["-s", device])
+            cmd.extend(["logcat", "-d", "-s", "flutter:I"])
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
+            output = stdout.decode("utf-8", errors="replace")
+
+            uri = _extract_uri(output)
+            if uri:
+                trace.log("DISCOVER_URI", f"logcat: {uri}")
+                return uri
+            trace.log("DISCOVER_LOGCAT_EMPTY", "No VM service URI in logcat")
+        except Exception as e:
+            trace.log("DISCOVER_LOGCAT_ERR", str(e))
+
+    # For iOS (or Android fallback): Try mDNS
     # The VM service advertises via Bonjour with the auth code in TXT record
     try:
         # Step 1: Browse for _dartVmService._tcp services
@@ -237,31 +267,6 @@ async def _discover_vm_service_uri(trace: TraceContext, device: Optional[str] = 
         trace.log("MDNS_NOT_FOUND", "No Dart VM service advertised via mDNS")
     except Exception as e:
         trace.log("MDNS_ERR", str(e))
-
-    # Fallback for Android: try logcat
-    if not is_ios and _adb_path:
-        trace.log("DISCOVER_FALLBACK", "Trying Android logcat")
-        try:
-            cmd = [_adb_path]
-            if device:
-                cmd.extend(["-s", device])
-            cmd.extend(["logcat", "-d", "-t", "100", "*:I"])
-
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=10)
-            output = stdout.decode("utf-8", errors="replace")
-
-            uri = _extract_uri(output)
-            if uri:
-                trace.log("DISCOVER_URI", f"logcat: {uri}")
-                return uri
-            trace.log("DISCOVER_LOGCAT_EMPTY", "No VM service URI in logcat")
-        except Exception as e:
-            trace.log("DISCOVER_LOGCAT_ERR", str(e))
 
     # Last resort for iOS: port scan (finds port but not auth code)
     if is_ios:
