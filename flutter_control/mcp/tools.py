@@ -578,10 +578,15 @@ async def _ios_list_devices(trace: TraceContext) -> Dict[str, Any]:
 
 
 async def _ios_boot_simulator(
-    trace: TraceContext, device_name: Optional[str] = None, udid: Optional[str] = None
+    trace: TraceContext, device_name: Optional[str] = None, udid: Optional[str] = None, headless: Optional[bool] = None
 ) -> Dict[str, Any]:
     """Boot an iOS simulator by name or UDID."""
     import json as json_module
+    from ..config import HEADLESS_DEFAULT
+
+    # Determine headless mode
+    if headless is None:
+        headless = HEADLESS_DEFAULT
 
     # If no UDID provided, find it by name
     if not udid and device_name:
@@ -624,10 +629,14 @@ async def _ios_boot_simulator(
             for device in device_list:
                 if device["udid"] == udid and device["state"] == "Booted":
                     trace.log("SIMCTL_BOOT", f"Already booted: {udid}")
+                    # Open Simulator app if not headless
+                    if not headless:
+                        await asyncio.create_subprocess_exec("open", "-a", "Simulator")
                     return {
                         "success": True,
                         "device_id": udid,
                         "message": "Simulator already booted",
+                        "headless": headless,
                     }
     except Exception:
         pass
@@ -653,11 +662,17 @@ async def _ios_boot_simulator(
         # Wait for simulator to be ready
         await asyncio.sleep(5)
 
-        trace.log("SIMCTL_OK", f"Booted {udid}")
+        # Open Simulator app if not headless
+        if not headless:
+            trace.log("SIMCTL_OPEN", "Opening Simulator app")
+            await asyncio.create_subprocess_exec("open", "-a", "Simulator")
+
+        trace.log("SIMCTL_OK", f"Booted {udid} (headless={headless})")
         return {
             "success": True,
             "device_id": udid,
             "message": "Simulator booted successfully",
+            "headless": headless,
         }
     except asyncio.TimeoutError:
         trace.log("SIMCTL_ERR", "Boot timeout")
@@ -1163,6 +1178,7 @@ TOOLS = [
             "properties": {
                 "device_name": {"type": "string", "description": "Simulator name (e.g., 'iPhone 16e')"},
                 "udid": {"type": "string", "description": "Simulator UDID (takes precedence over device_name)"},
+                "headless": {"type": "boolean", "description": "Run without window (default: FLUTTER_CONTROL_HEADLESS env or false)"},
             },
         },
     },
@@ -1537,7 +1553,8 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
     elif name == "ios_boot_simulator":
         device_name = arguments.get("device_name")
         udid = arguments.get("udid")
-        return await _ios_boot_simulator(trace, device_name, udid)
+        headless = arguments.get("headless")
+        return await _ios_boot_simulator(trace, device_name, udid, headless)
 
     elif name == "ios_shutdown_simulator":
         udid = arguments.get("udid")

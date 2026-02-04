@@ -23,6 +23,9 @@ OBSERVATORY_PORT_IOS = int(os.getenv("FLUTTER_CONTROL_OBSERVATORY_IOS", "9224"))
 # Default app ID for Maestro (can be overridden per-call)
 DEFAULT_APP_ID = os.getenv("FLUTTER_CONTROL_APP_ID", "com.example.flutter_control_test_app")
 
+# Emulator/Simulator defaults
+HEADLESS_DEFAULT = os.getenv("FLUTTER_CONTROL_HEADLESS", "false").lower() == "true"
+
 # Logging
 LOG_DIR = Path.home() / "Library" / "Logs" / "flutter-control"
 MAESTRO_FLOW_DIR = LOG_DIR / "maestro"
