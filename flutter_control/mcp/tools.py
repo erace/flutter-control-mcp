@@ -682,8 +682,8 @@ async def _ios_start_simulator(
         return {"success": False, "error": str(e)}
 
 
-async def _ios_shutdown_simulator(trace: TraceContext, udid: Optional[str] = None) -> Dict[str, Any]:
-    """Shutdown an iOS simulator."""
+async def _ios_stop_simulator(trace: TraceContext, udid: Optional[str] = None) -> Dict[str, Any]:
+    """Stop an iOS simulator."""
     import json as json_module
 
     # If no UDID, find the first booted simulator
@@ -806,7 +806,7 @@ async def _android_list_devices(trace: TraceContext) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-async def _android_boot_emulator(
+async def _android_start_emulator(
     trace: TraceContext, avd_name: str, cold_boot: bool = False
 ) -> Dict[str, Any]:
     """Boot an Android emulator by AVD name."""
@@ -880,10 +880,10 @@ async def _android_boot_emulator(
         return {"success": False, "error": str(e)}
 
 
-async def _android_shutdown_emulator(
+async def _android_stop_emulator(
     trace: TraceContext, device_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Shutdown an Android emulator."""
+    """Stop an Android emulator."""
     if not _adb_path:
         return {"success": False, "error": "ADB not found"}
 
@@ -1183,8 +1183,8 @@ TOOLS = [
         },
     },
     {
-        "name": "ios_shutdown_simulator",
-        "description": "Shutdown an iOS simulator.",
+        "name": "ios_stop_simulator",
+        "description": "Stop an iOS simulator.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1202,7 +1202,7 @@ TOOLS = [
         },
     },
     {
-        "name": "android_boot_emulator",
+        "name": "android_start_emulator",
         "description": "Boot an Android emulator by AVD name.",
         "inputSchema": {
             "type": "object",
@@ -1214,8 +1214,8 @@ TOOLS = [
         },
     },
     {
-        "name": "android_shutdown_emulator",
-        "description": "Shutdown an Android emulator.",
+        "name": "android_stop_emulator",
+        "description": "Stop an Android emulator.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1556,24 +1556,24 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
         headless = arguments.get("headless")
         return await _ios_start_simulator(trace, device_name, udid, headless)
 
-    elif name == "ios_shutdown_simulator":
+    elif name == "ios_stop_simulator":
         udid = arguments.get("udid")
-        return await _ios_shutdown_simulator(trace, udid)
+        return await _ios_stop_simulator(trace, udid)
 
     # Android Emulator lifecycle tools
     elif name == "android_list_devices":
         return await _android_list_devices(trace)
 
-    elif name == "android_boot_emulator":
+    elif name == "android_start_emulator":
         avd_name = arguments.get("avd_name")
         if not avd_name:
             return {"success": False, "error": "avd_name is required"}
         cold_boot = arguments.get("cold_boot", False)
-        return await _android_boot_emulator(trace, avd_name, cold_boot)
+        return await _android_start_emulator(trace, avd_name, cold_boot)
 
-    elif name == "android_shutdown_emulator":
+    elif name == "android_stop_emulator":
         device_id = arguments.get("device_id")
-        return await _android_shutdown_emulator(trace, device_id)
+        return await _android_stop_emulator(trace, device_id)
 
     else:
         return {"success": False, "error": f"Unknown tool: {name}"}
