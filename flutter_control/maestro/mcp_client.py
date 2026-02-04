@@ -239,28 +239,28 @@ class MaestroMCPClient:
         finder: dict,
         trace: TraceContext,
         timeout: int = 30,
-        device: Optional[str] = None
+        device: Optional[str] = None,
+        app_id: str = "com.example.flutter_control_test_app"
     ) -> dict:
-        """Tap on an element."""
+        """Tap on an element using run_flow (more reliable than tap_on tool)."""
         device_id = device or await self.get_device_id(trace)
         if not device_id:
             return {"success": False, "error": "No device connected"}
 
-        args = {"device_id": device_id}
-
+        # Build flow YAML - use run_flow instead of tap_on tool
+        # tap_on tool seems to return success without actually performing the tap
         if "text" in finder:
-            args["text"] = finder["text"]
+            # Use regex for partial matching (consistent with legacy mode)
+            text = finder["text"]
+            flow_yaml = f"appId: {app_id}\n---\n- tapOn: \".*{text}.*\""
         elif "id" in finder:
-            args["id"] = finder["id"]
+            flow_yaml = f"appId: {app_id}\n---\n- tapOn:\n    id: \"{finder['id']}\""
         else:
             return {"success": False, "error": f"Unsupported finder: {finder}"}
 
-        if "index" in finder:
-            args["index"] = finder["index"]
-
-        trace.log("MAESTRO_MCP", f"tap_on: {args}")
-        result = await self.call_tool("tap_on", args, timeout=timeout)
-        trace.log("MAESTRO_MCP", f"tap_on result: {result.get('success')}")
+        trace.log("MAESTRO_MCP", f"tap via run_flow: {finder}")
+        result = await self.run_flow(flow_yaml, trace, timeout, device_id)
+        trace.log("MAESTRO_MCP", f"tap result: {result.get('success')}")
         return result
 
     async def enter_text(

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from ..config import TOKEN, MCP_PORT, MCP_HOST, LOG_DIR
 from .tools import TOOLS, handle_tool_call
 from ..__version__ import __version__ as VERSION
+from ..maestro.mcp_client import MaestroMCPClient
 START_TIME = datetime.now(timezone.utc)
 
 # Detect platform based on port
@@ -53,6 +54,29 @@ def _get_git_commit():
 app = FastAPI(title="Flutter Control MCP Server")
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Maestro MCP client on server startup for fast operations."""
+    try:
+        # Start maestro mcp process eagerly to avoid JVM startup delay on first request
+        client = await MaestroMCPClient.get_instance()
+        if client._connected:
+            print(f"✓ Maestro MCP client started (fast mode enabled)")
+        else:
+            print(f"⚠ Maestro MCP client not available (will use legacy mode)")
+    except Exception as e:
+        print(f"⚠ Maestro MCP initialization failed: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up Maestro MCP client on server shutdown."""
+    try:
+        await MaestroMCPClient.shutdown()
+    except Exception:
+        pass  # Ignore errors during shutdown
+
+
 class ToolCallRequest(BaseModel):
     name: str
     arguments: Dict[str, Any] = {}
@@ -78,6 +102,24 @@ def verify_token(authorization: Optional[str]) -> bool:
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "flutter-control"}
+
+
+@app.get("/maestro-status")
+async def maestro_status():
+    """Check Maestro MCP client status."""
+    try:
+        client = MaestroMCPClient._instance
+        if client is None:
+            return {"status": "not_initialized", "mode": "legacy"}
+
+        connected = client._connected and client._process and client._process.returncode is None
+        return {
+            "status": "running" if connected else "stopped",
+            "mode": "fast" if connected else "legacy",
+            "pid": client._process.pid if connected else None,
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e), "mode": "legacy"}
 
 
 @app.get("/version")
