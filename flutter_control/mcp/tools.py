@@ -811,6 +811,25 @@ async def _android_list_devices(trace: TraceContext) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
+async def _setup_maestro_forwarding(trace: TraceContext, device_id: str) -> bool:
+    """Set up port forwarding for Maestro driver (port 7001)."""
+    if not _adb_path:
+        return False
+    try:
+        process = await asyncio.create_subprocess_exec(
+            _adb_path, "-s", device_id, "forward", "tcp:7001", "tcp:7001",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await asyncio.wait_for(process.communicate(), timeout=5)
+        if process.returncode == 0:
+            trace.log("MAESTRO_FWD", "Port 7001 forwarded for Maestro")
+            return True
+        return False
+    except Exception:
+        return False
+
+
 async def _android_start_emulator(
     trace: TraceContext, avd_name: str, cold_boot: bool = False
 ) -> Dict[str, Any]:
@@ -833,6 +852,8 @@ async def _android_start_emulator(
             for line in stdout.decode().split("\n"):
                 if "emulator-" in line and "device" in line:
                     device_id = line.split()[0]
+                    # Set up Maestro port forwarding
+                    await _setup_maestro_forwarding(trace, device_id)
                     return {
                         "success": True,
                         "device_id": device_id,
@@ -870,6 +891,8 @@ async def _android_start_emulator(
                         if "emulator-" in line and "device" in line:
                             device_id = line.split()[0]
                             trace.log("EMU_OK", f"Started {avd_name} as {device_id}")
+                            # Set up Maestro port forwarding
+                            await _setup_maestro_forwarding(trace, device_id)
                             return {
                                 "success": True,
                                 "device_id": device_id,
