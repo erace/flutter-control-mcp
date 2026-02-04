@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-02-04
+
+### Added
+- **`/upload-app` HTTP endpoint**: Unified app deployment
+  - iOS: Upload .app bundle as zip, auto-extract and install via simctl
+  - Android: Upload .apk directly, install via adb
+  - Optional headers: `X-Bundle-Id`, `X-Device`, `X-Launch`
+- **Headless mode**: `headless` parameter for simulator/emulator start
+  - `ios_start_simulator {headless: true}` - run without window
+  - Env var: `FLUTTER_CONTROL_HEADLESS=true` for default
+- **Test suite for upload-app**: Comprehensive tests in `tests/test_upload_app.py`
+
+### Changed
+- **Consistent tool naming**: All lifecycle tools now use start/stop pattern
+  - `ios_boot_simulator` → `ios_start_simulator`
+  - `ios_shutdown_simulator` → `ios_stop_simulator`
+  - `android_boot_emulator` → `android_start_emulator`
+  - `android_shutdown_emulator` → `android_stop_emulator`
+- **Screenshot output**: Now saves to file and returns path instead of base64
+  - Path: `~/Library/Logs/flutter-control/screenshots/<timestamp>.png`
+  - Reduces response size from ~150-230KB to ~100 bytes
+
+### Fixed
+- **Graceful MCP shutdown**: Added signal handlers (SIGTERM, SIGINT)
+  - Eliminates "MCP failed" errors on Claude Code exit
+- Datetime deprecation warnings (using timezone-aware datetimes)
+
 ## [0.5.0] - 2026-02-03
 
 ### Added
@@ -119,7 +146,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Screenshots: ~0.6s (was ~15s)
 - View hierarchy: ~0.5s (was ~15s)
 
-[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/erace/flutter-control-mcp/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/erace/flutter-control-mcp/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/erace/flutter-control-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/erace/flutter-control-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/erace/flutter-control-mcp/compare/v0.2.0...v0.3.0
