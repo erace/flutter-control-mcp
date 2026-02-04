@@ -5,7 +5,7 @@
 set -e
 
 VM_HOST="${VM_HOST:-claude-dev.local}"
-WHEEL_URL="http://${VM_HOST}:9999/dist"
+WHEEL_URL="http://${VM_HOST}:9999"
 VENV_PATH="${HOME}/.flutter-control-venv"
 LOG_DIR="${HOME}/Library/Logs/flutter-control"
 
@@ -29,7 +29,7 @@ fi
 source "$VENV_PATH/bin/activate"
 pip install --upgrade pip -q
 echo "Installing ${WHEEL_NAME}..."
-pip install --force-reinstall "${WHEEL_URL}/${WHEEL_NAME}" -q
+pip install --force-reinstall --no-cache-dir "${WHEEL_URL}/${WHEEL_NAME}" -q
 
 # Get installed version
 VERSION=$(python3 -c "from flutter_control import __version__; print(__version__)")
