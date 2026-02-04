@@ -577,10 +577,10 @@ async def _ios_list_devices(trace: TraceContext) -> Dict[str, Any]:
         return {"success": False, "error": str(e)}
 
 
-async def _ios_boot_simulator(
+async def _ios_start_simulator(
     trace: TraceContext, device_name: Optional[str] = None, udid: Optional[str] = None, headless: Optional[bool] = None
 ) -> Dict[str, Any]:
-    """Boot an iOS simulator by name or UDID."""
+    """Start an iOS simulator by name or UDID."""
     import json as json_module
     from ..config import HEADLESS_DEFAULT
 
@@ -1171,8 +1171,8 @@ TOOLS = [
         },
     },
     {
-        "name": "ios_boot_simulator",
-        "description": "Boot an iOS simulator by name or UDID.",
+        "name": "ios_start_simulator",
+        "description": "Start an iOS simulator by name or UDID.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1550,11 +1550,11 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
     elif name == "ios_list_devices":
         return await _ios_list_devices(trace)
 
-    elif name == "ios_boot_simulator":
+    elif name == "ios_start_simulator":
         device_name = arguments.get("device_name")
         udid = arguments.get("udid")
         headless = arguments.get("headless")
-        return await _ios_boot_simulator(trace, device_name, udid, headless)
+        return await _ios_start_simulator(trace, device_name, udid, headless)
 
     elif name == "ios_shutdown_simulator":
         udid = arguments.get("udid")
