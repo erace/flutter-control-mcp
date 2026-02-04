@@ -931,6 +931,87 @@ async def _android_stop_emulator(
         return {"success": False, "error": str(e)}
 
 
+# =============================================================================
+# ADB Proxy Tools
+# =============================================================================
+
+async def _android_adb_proxy_status(trace: TraceContext) -> Dict[str, Any]:
+    """Get ADB proxy status."""
+    from ..adb_proxy import get_adb_proxy
+    proxy = get_adb_proxy()
+    status = proxy.status()
+    trace.log("PROXY_STATUS", f"running={status['running']}")
+
+    if status['running']:
+        return {
+            "success": True,
+            "running": True,
+            "listen_address": status['listen_address'],
+            "adb_server": status['adb_server'],
+            "active_connections": status['active_connections'],
+            "message": f"ADB Proxy running on {status['listen_address']}",
+        }
+    else:
+        return {
+            "success": True,
+            "running": False,
+            "message": "ADB Proxy is stopped. Use android_adb_proxy_start to enable.",
+        }
+
+
+async def _android_adb_proxy_start(trace: TraceContext) -> Dict[str, Any]:
+    """Start ADB proxy for remote ADB access."""
+    from ..adb_proxy import get_adb_proxy
+    proxy = get_adb_proxy()
+
+    if proxy.is_running:
+        trace.log("PROXY_ALREADY", f"Already running on {proxy.listen_port}")
+        return {
+            "success": True,
+            "already_running": True,
+            "listen_address": f"{proxy.listen_host}:{proxy.listen_port}",
+            "message": f"ADB Proxy already running on port {proxy.listen_port}",
+        }
+
+    success = await proxy.start()
+    if success:
+        trace.log("PROXY_START", f"Started on {proxy.listen_port}")
+        return {
+            "success": True,
+            "listen_address": f"{proxy.listen_host}:{proxy.listen_port}",
+            "message": f"ADB Proxy started on port {proxy.listen_port}",
+            "usage": f"Set ADB_SERVER_SOCKET=tcp:<host>:{proxy.listen_port} in VM",
+        }
+    else:
+        trace.log("PROXY_FAIL", "Failed to start")
+        return {
+            "success": False,
+            "error": f"Failed to start proxy (port {proxy.listen_port} may be in use)",
+        }
+
+
+async def _android_adb_proxy_stop(trace: TraceContext) -> Dict[str, Any]:
+    """Stop ADB proxy."""
+    from ..adb_proxy import get_adb_proxy
+    proxy = get_adb_proxy()
+
+    if not proxy.is_running:
+        trace.log("PROXY_NOT_RUNNING", "Not running")
+        return {
+            "success": True,
+            "was_running": False,
+            "message": "ADB Proxy was not running",
+        }
+
+    await proxy.stop()
+    trace.log("PROXY_STOP", "Stopped")
+    return {
+        "success": True,
+        "was_running": True,
+        "message": "ADB Proxy stopped",
+    }
+
+
 TOOLS = [
     {
         "name": "flutter_tap",
@@ -1221,6 +1302,31 @@ TOOLS = [
             "properties": {
                 "device_id": {"type": "string", "description": "Device ID (default: first running emulator)"},
             },
+        },
+    },
+    # ADB Proxy tools
+    {
+        "name": "android_adb_proxy_status",
+        "description": "Get the status of the ADB proxy for remote Flutter development.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "android_adb_proxy_start",
+        "description": "Start the ADB proxy to allow Flutter in VM to deploy to host emulator with hot reload.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "android_adb_proxy_stop",
+        "description": "Stop the ADB proxy.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
         },
     },
 ]
@@ -1574,6 +1680,16 @@ async def _execute_tool(name: str, arguments: Dict[str, Any], trace: TraceContex
     elif name == "android_stop_emulator":
         device_id = arguments.get("device_id")
         return await _android_stop_emulator(trace, device_id)
+
+    # ADB Proxy tools
+    elif name == "android_adb_proxy_status":
+        return await _android_adb_proxy_status(trace)
+
+    elif name == "android_adb_proxy_start":
+        return await _android_adb_proxy_start(trace)
+
+    elif name == "android_adb_proxy_stop":
+        return await _android_adb_proxy_stop(trace)
 
     else:
         return {"success": False, "error": f"Unknown tool: {name}"}
